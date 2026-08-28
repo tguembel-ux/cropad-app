@@ -1,91 +1,192 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useUser, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
-import { UploadCloud, Sparkles, Layers, RefreshCw, CheckCircle2, Wand2 } from "lucide-react";
+import {
+  Sparkles,
+  Layers,
+  RefreshCw,
+  Copy,
+  Check,
+  Palette,
+  FileText,
+  SlidersHorizontal,
+  ChevronRight,
+} from "lucide-react";
+
+// Vordefinierte, hochwertige B2B-Farbpresets
+const COLOR_PRESETS = [
+  {
+    name: "Dark Slate",
+    bg: "#09090b",
+    cardBg: "#18181b",
+    text: "#fafafa",
+    accent: "#3b82f6",
+    subtext: "#a1a1aa",
+  },
+  {
+    name: "Ocean Blue",
+    bg: "#030712",
+    cardBg: "#0f172a",
+    text: "#f8fafc",
+    accent: "#0ea5e9",
+    subtext: "#94a3b8",
+  },
+  {
+    name: "Emerald Growth",
+    bg: "#022c22",
+    cardBg: "#064e3b",
+    text: "#f0fdf4",
+    accent: "#10b981",
+    subtext: "#a7f3d0",
+  },
+  {
+    name: "Clean Light",
+    bg: "#f8fafc",
+    cardBg: "#ffffff",
+    text: "#0f172a",
+    accent: "#2563eb",
+    subtext: "#64748b",
+  },
+];
+
+const AD_FORMATS = [
+  { id: "4_5", name: "LinkedIn Karussell (4:5)", desc: "1080 × 1350 px (PDF)", aspect: "aspect-[4/5]" },
+  { id: "1_1", name: "Square Post (1:1)", desc: "1080 × 1080 px (Feed)", aspect: "aspect-square" },
+  { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels)", aspect: "aspect-[9/16]" },
+];
 
 export default function Home() {
   const { isSignedIn, isLoaded } = useUser();
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<"blur" | "cover" | "outpaint">("outpaint");
-  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [content, setContent] = useState("");
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [numSlides, setNumSlides] = useState(5);
+  const [selectedFormat, setSelectedFormat] = useState("4_5");
+  const [theme, setTheme] = useState(COLOR_PRESETS[0]);
+  const [showCustomColors, setShowCustomColors] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Separate Text-States für die manuelle Hexcode-Eingabe
+  const [hexInputs, setHexInputs] = useState({
+    bg: COLOR_PRESETS[0].bg,
+    accent: COLOR_PRESETS[0].accent,
+    text: COLOR_PRESETS[0].text,
+    subtext: COLOR_PRESETS[0].subtext,
+  });
 
-  const processImage = async (file: File, mode: "blur" | "cover" | "outpaint") => {
+  // Ergebnis-States
+  const [slides, setSlides] = useState<any[]>([]);
+  const [postCopy, setPostCopy] = useState<string>("");
+  const [copied, setCopied] = useState(false);
+
+  // Hilfsfunktion: Prüft, ob ein String ein gültiger 6-stelliger oder 3-stelliger Hex-Code ist
+  const isValidHex = (hex: string) => {
+    return /^#([0-9A-F]{3}){1,2}$/i.test(hex);
+  };
+
+  // Verarbeitet die Eingabe von Hex-Codes über das Textfeld
+  const handleHexChange = (key: "bg" | "accent" | "text" | "subtext", val: string) => {
+    let formatted = val.trim();
+    if (formatted.length > 0 && !formatted.startsWith("#")) {
+      formatted = `#${formatted}`;
+    }
+
+    setHexInputs((prev) => ({ ...prev, [key]: formatted }));
+
+    if (isValidHex(formatted)) {
+      if (key === "bg") {
+        setTheme((prev) => ({ ...prev, bg: formatted, cardBg: formatted }));
+      } else {
+        setTheme((prev) => ({ ...prev, [key]: formatted }));
+      }
+    }
+  };
+
+  // Verarbeitet die Auswahl über den Color-Picker
+  const handleColorPickerChange = (key: "bg" | "accent" | "text" | "subtext", val: string) => {
+    setHexInputs((prev) => ({ ...prev, [key]: val }));
+    if (key === "bg") {
+      setTheme((prev) => ({ ...prev, bg: val, cardBg: val }));
+    } else {
+      setTheme((prev) => ({ ...prev, [key]: val }));
+    }
+  };
+
+  const handleSelectPreset = (p: typeof COLOR_PRESETS[0]) => {
+    setTheme(p);
+    setHexInputs({
+      bg: p.bg,
+      accent: p.accent,
+      text: p.text,
+      subtext: p.subtext,
+    });
+  };
+
+  const handleGenerate = async () => {
+    if (!content.trim()) {
+      alert("Bitte gib einen Text oder Notizen ein.");
+      return;
+    }
+
     setLoading(true);
-    setSelectedFileName(file.name);
-    setResults([]);
-
-    const formData = new FormData();
-    formData.append("image", file);
-    formData.append("mode", mode);
+    setSlides([]);
+    setPostCopy("");
 
     try {
-      const res = await fetch("/api/resize", {
+      const res = await fetch("/api/generate", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          customPrompt,
+          numSlides,
+        }),
       });
 
       const data = await res.json();
+
       if (data.success) {
-        setResults(data.images);
+        setSlides(data.slides);
+        setPostCopy(data.postCopy);
       } else {
         alert("Fehler: " + data.error);
       }
     } catch (err) {
-      alert("Netzwerkfehler beim Verarbeiten des Bildes.");
+      alert("Verbindungsfehler beim Generieren.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) processImage(file, selectedMode);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith("image/")) {
-      processImage(file, selectedMode);
-    }
+  const copyToClipboard = () => {
+    if (!postCopy) return;
+    navigator.clipboard.writeText(postCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   if (!isLoaded) {
     return (
-      <main className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-400">
+      <main className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-400 font-sans">
         <RefreshCw className="animate-spin w-6 h-6 text-blue-500 mr-2" />
-        Lädt Workspace...
+        Lädt CropAd Workspace...
       </main>
     );
   }
+
+  const activeFormatObj = AD_FORMATS.find((f) => f.id === selectedFormat) || AD_FORMATS[0];
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans flex flex-col">
       {/* Header */}
       <header className="border-b border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md sticky top-0 z-50 px-6 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white leading-tight">CropAd</h1>
-            <p className="text-[11px] text-zinc-400">Automated AI Ad Formats</p>
+            <p className="text-[11px] text-zinc-400">Content Repurposing & Carousels</p>
           </div>
         </div>
 
@@ -105,172 +206,338 @@ export default function Home() {
             </div>
           ) : (
             <div className="flex items-center gap-4">
-              <span className="text-xs text-zinc-400 hidden sm:inline-block">AI Studio</span>
+              <span className="text-xs text-zinc-400 hidden sm:inline-block">Repurpose Studio</span>
               <UserButton />
             </div>
           )}
         </div>
       </header>
 
-      {/* Main Area */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-6 md:p-10 flex flex-col items-center">
+      {/* Main Container */}
+      <main className="flex-1 max-w-6xl w-full mx-auto p-6 md:p-10 flex flex-col">
         {!isSignedIn ? (
-          <div className="my-auto text-center max-w-lg space-y-6">
+          <div className="my-auto text-center max-w-xl mx-auto space-y-6">
             <div className="inline-flex p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 mb-2">
               <Layers className="w-8 h-8" />
             </div>
             <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-white">
-              Ein Bild. Alle Ad-Formate per KI.
+              Aus langen Inhalten zu viralen Karussells in Sekunden.
             </h2>
-            <p className="text-zinc-400 leading-relaxed">
-              Erstelle passende Formate für Instagram Feed, Story & Google Ads mit KI-Outpainting.
+            <p className="text-zinc-400 leading-relaxed text-sm">
+              Verwandle Blogartikel, Skripte und Notizen per KI in gestochen scharfe LinkedIn-PDF-Karussells und fertige Begleittexte im eigenen Corporate Design.
             </p>
             <div className="pt-2">
               <SignUpButton mode="modal">
-                <button className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-3 rounded-xl shadow-lg shadow-blue-600/25 transition-all transform hover:-translate-y-0.5">
+                <button className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-3 rounded-xl shadow-lg shadow-blue-600/25 transition-all">
                   Jetzt kostenlos starten
                 </button>
               </SignUpButton>
             </div>
           </div>
         ) : (
-          <div className="w-full space-y-8">
-            {/* Control Bar: 3 Modi */}
-            <div className="bg-zinc-900/60 border border-zinc-800 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-semibold text-white">Generierungs-Modus</h3>
-                <p className="text-xs text-zinc-400">Wähle zwischen KI-Outpainting oder klassischem Resizing.</p>
-              </div>
+          <div className="space-y-10">
+            {/* OBERER BEREICH: Input & Branding Controls */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Linke Spalte: Text-Input */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="bg-zinc-900/60 border border-zinc-800 p-6 rounded-3xl space-y-4">
+                  <div className="flex items-center gap-2 text-zinc-200">
+                    <FileText className="w-5 h-5 text-blue-400" />
+                    <h2 className="font-semibold text-sm">Quelltext, Notizen oder Transkript</h2>
+                  </div>
 
-              {/* 3 Tabs */}
-              <div className="bg-zinc-950 p-1 rounded-xl border border-zinc-800/80 flex flex-wrap gap-1 w-full sm:w-auto">
-                <button
-                  onClick={() => setSelectedMode("outpaint")}
-                  className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition ${
-                    selectedMode === "outpaint"
-                      ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  <Wand2 className="w-3.5 h-3.5 text-blue-300" />
-                  ✨ KI Outpaint (Expand)
-                </button>
-                <button
-                  onClick={() => setSelectedMode("blur")}
-                  className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-medium transition ${
-                    selectedMode === "blur"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  Original + Blur
-                </button>
-                <button
-                  onClick={() => setSelectedMode("cover")}
-                  className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-medium transition ${
-                    selectedMode === "cover"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  Vollbild Crop
-                </button>
-              </div>
-            </div>
+                  <textarea
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Füge hier deinen Text, Notizen, Blogbeitrag oder Kernaussagen ein..."
+                    rows={6}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition resize-none"
+                  />
 
-            {/* Upload Zone */}
-            <div
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`relative border-2 border-dashed rounded-3xl p-10 text-center cursor-pointer transition-all duration-200 ${
-                isDragging
-                  ? "border-blue-500 bg-blue-500/10 scale-[1.01]"
-                  : "border-zinc-800 bg-zinc-900/30 hover:border-zinc-700 hover:bg-zinc-900/50"
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileSelect}
-                className="hidden"
-              />
+                  {/* Optionaler Prompt */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-zinc-400 flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
+                      Optionale Anweisungen an die KI (z. B. Tonalität, Zielgruppe)
+                    </label>
+                    <input
+                      type="text"
+                      value={customPrompt}
+                      onChange={(e) => setCustomPrompt(e.target.value)}
+                      placeholder="Z. B. 'Storytelling-Stil, Fokus auf B2B-Entscheider'"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition"
+                    />
+                  </div>
 
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-14 h-14 rounded-2xl bg-zinc-800/80 flex items-center justify-center text-blue-400 border border-zinc-700/50 shadow-inner">
-                  {loading ? (
-                    <RefreshCw className="w-7 h-7 animate-spin text-blue-500" />
-                  ) : (
-                    <UploadCloud className="w-7 h-7" />
-                  )}
-                </div>
-                <div>
-                  <p className="text-base font-semibold text-white">
-                    {loading
-                      ? selectedMode === "outpaint"
-                        ? "Generative KI malt Hintergründe aus..."
-                        : "Bilder werden berechnet..."
-                      : isDragging
-                      ? "Bild jetzt hier loslassen"
-                      : "Bild hier reinziehen oder klicken"}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Aktiver Modus:{" "}
-                    <span className="text-blue-400 font-medium">
-                      {selectedMode === "outpaint"
-                        ? "✨ KI Outpainting"
-                        : selectedMode === "blur"
-                        ? "Original + Blur"
-                        : "Vollbild Crop"}
+                  {/* Slider: Folienanzahl (JETZT AB 1 FOLIE) */}
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-xs text-zinc-400">
+                      Anzahl Folien: <strong className="text-white">{numSlides}</strong>
                     </span>
-                  </p>
+                    <input
+                      type="range"
+                      min={1}
+                      max={10}
+                      value={numSlides}
+                      onChange={(e) => setNumSlides(Number(e.target.value))}
+                      className="w-32 accent-blue-600 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Generieren Button */}
+                  <button
+                    onClick={handleGenerate}
+                    disabled={loading || !content.trim()}
+                    className="w-full mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition shadow-lg shadow-blue-600/20"
+                  >
+                    {loading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        KI analysiert und strukturiert Folien...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Karussell & Text generieren
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
-            </div>
 
-            {/* Ergebnis-Galerie */}
-            {results.length > 0 && (
-              <div className="space-y-4 pt-4 animate-in fade-in duration-300">
-                <div className="flex justify-between items-center">
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                    Generierte Formate
-                  </h2>
-                  <span className="text-xs text-zinc-400 bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full">
-                    {selectedFileName}
-                  </span>
+              {/* Rechte Spalte: Format- & Farb-Einstellungen */}
+              <div className="lg:col-span-5 space-y-6">
+                {/* Format-Auswahl */}
+                <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-3xl space-y-3">
+                  <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Ziel-Format</h3>
+                  <div className="grid grid-cols-1 gap-2">
+                    {AD_FORMATS.map((fmt) => (
+                      <button
+                        key={fmt.id}
+                        onClick={() => setSelectedFormat(fmt.id)}
+                        className={`p-3 rounded-xl text-left border flex items-center justify-between transition ${
+                          selectedFormat === fmt.id
+                            ? "border-blue-500 bg-blue-500/10 text-white"
+                            : "border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:border-zinc-700"
+                        }`}
+                      >
+                        <div>
+                          <p className="text-xs font-medium text-white">{fmt.name}</p>
+                          <p className="text-[11px] text-zinc-500">{fmt.desc}</p>
+                        </div>
+                        {selectedFormat === fmt.id && <ChevronRight className="w-4 h-4 text-blue-400" />}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {results.map((img) => (
-                    <div
-                      key={img.key}
-                      className="bg-zinc-900/70 border border-zinc-800/80 rounded-2xl p-4 flex flex-col justify-between hover:border-zinc-700 transition group shadow-lg"
+                {/* Farb-Design / Corporate Identity */}
+                <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-3xl space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Palette className="w-4 h-4 text-blue-400" />
+                      <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Design & Branding</h3>
+                    </div>
+                    <button
+                      onClick={() => setShowCustomColors(!showCustomColors)}
+                      className="text-[11px] text-blue-400 hover:underline"
                     >
-                      <div>
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <h3 className="font-semibold text-sm text-white">{img.name}</h3>
-                            <p className="text-[11px] text-zinc-400">{img.desc}</p>
-                          </div>
-                          <span className="text-[10px] font-mono bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded">
-                            {img.width}×{img.height}
-                          </span>
-                        </div>
+                      {showCustomColors ? "Presets wählen" : "Custom Hex-Codes"}
+                    </button>
+                  </div>
 
-                        <div className="w-full h-56 bg-zinc-950 rounded-xl border border-zinc-800/50 flex items-center justify-center overflow-hidden my-3">
-                          <img
-                            src={img.url}
-                            alt={img.name}
-                            className="max-h-full max-w-full object-contain"
+                  {!showCustomColors ? (
+                    /* Preset Buttons */
+                    <div className="grid grid-cols-2 gap-2">
+                      {COLOR_PRESETS.map((p) => (
+                        <button
+                          key={p.name}
+                          onClick={() => handleSelectPreset(p)}
+                          className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2.5 ${
+                            theme.name === p.name
+                              ? "border-blue-500 bg-zinc-800/80"
+                              : "border-zinc-800 bg-zinc-950/50 hover:border-zinc-700"
+                          }`}
+                        >
+                          <div
+                            className="w-6 h-6 rounded-lg border border-zinc-700 flex items-center justify-center overflow-hidden"
+                            style={{ background: p.bg }}
+                          >
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ background: p.accent }} />
+                          </div>
+                          <span className="text-xs font-medium text-zinc-200">{p.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    /* Custom Color Picker + Manuelle Hex-Eingabe */
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      {/* Hintergrund */}
+                      <div>
+                        <label className="text-[10px] text-zinc-400 block mb-1">Hintergrund</label>
+                        <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
+                          <input
+                            type="color"
+                            value={isValidHex(hexInputs.bg) ? hexInputs.bg : "#000000"}
+                            onChange={(e) => handleColorPickerChange("bg", e.target.value)}
+                            className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                          />
+                          <input
+                            type="text"
+                            value={hexInputs.bg}
+                            onChange={(e) => handleHexChange("bg", e.target.value)}
+                            className="w-full bg-transparent text-xs font-mono text-zinc-200 focus:outline-none"
+                            placeholder="#09090b"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Akzent */}
+                      <div>
+                        <label className="text-[10px] text-zinc-400 block mb-1">Akzentfarbe</label>
+                        <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
+                          <input
+                            type="color"
+                            value={isValidHex(hexInputs.accent) ? hexInputs.accent : "#3b82f6"}
+                            onChange={(e) => handleColorPickerChange("accent", e.target.value)}
+                            className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                          />
+                          <input
+                            type="text"
+                            value={hexInputs.accent}
+                            onChange={(e) => handleHexChange("accent", e.target.value)}
+                            className="w-full bg-transparent text-xs font-mono text-zinc-200 focus:outline-none"
+                            placeholder="#3b82f6"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Überschrift */}
+                      <div>
+                        <label className="text-[10px] text-zinc-400 block mb-1">Überschrift / Text</label>
+                        <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
+                          <input
+                            type="color"
+                            value={isValidHex(hexInputs.text) ? hexInputs.text : "#ffffff"}
+                            onChange={(e) => handleColorPickerChange("text", e.target.value)}
+                            className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                          />
+                          <input
+                            type="text"
+                            value={hexInputs.text}
+                            onChange={(e) => handleHexChange("text", e.target.value)}
+                            className="w-full bg-transparent text-xs font-mono text-zinc-200 focus:outline-none"
+                            placeholder="#fafafa"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Untertext */}
+                      <div>
+                        <label className="text-[10px] text-zinc-400 block mb-1">Untertext</label>
+                        <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
+                          <input
+                            type="color"
+                            value={isValidHex(hexInputs.subtext) ? hexInputs.subtext : "#888888"}
+                            onChange={(e) => handleColorPickerChange("subtext", e.target.value)}
+                            className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                          />
+                          <input
+                            type="text"
+                            value={hexInputs.subtext}
+                            onChange={(e) => handleHexChange("subtext", e.target.value)}
+                            className="w-full bg-transparent text-xs font-mono text-zinc-200 focus:outline-none"
+                            placeholder="#a1a1aa"
                           />
                         </div>
                       </div>
                     </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* UNTERER BEREICH: Live-Ergebnisse & Begleittext */}
+            {slides.length > 0 && (
+              <div className="space-y-8 pt-4 border-t border-zinc-800 animate-in fade-in duration-300">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Generierte Karussell-Folien ({slides.length})</h2>
+                    <p className="text-xs text-zinc-400">Vorschau im gewählten Design-Theme</p>
+                  </div>
+                </div>
+
+                {/* Folien-Vorschau Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {slides.map((slide, idx) => (
+                    <div
+                      key={idx}
+                      className={`relative rounded-2xl p-6 flex flex-col justify-between shadow-2xl transition border border-zinc-700/40 ${activeFormatObj.aspect}`}
+                      style={{ backgroundColor: theme.cardBg || theme.bg, color: theme.text }}
+                    >
+                      {/* Header der Folie */}
+                      <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase">
+                        <span
+                          className="px-2 py-0.5 rounded"
+                          style={{ backgroundColor: `${theme.accent}20`, color: theme.accent }}
+                        >
+                          {slide.tag || `Slide ${slide.slideNumber}`}
+                        </span>
+                        <span style={{ color: theme.subtext }}>
+                          {idx + 1} / {slides.length}
+                        </span>
+                      </div>
+
+                      {/* Inhalt */}
+                      <div className="my-auto space-y-3">
+                        <h3 className="font-bold text-base leading-snug" style={{ color: theme.text }}>
+                          {slide.headline}
+                        </h3>
+                        <p className="text-xs leading-relaxed" style={{ color: theme.subtext }}>
+                          {slide.content}
+                        </p>
+                      </div>
+
+                      {/* Footer Branding Bar */}
+                      <div className="pt-3 border-t border-zinc-800/40 flex items-center justify-between text-[10px]" style={{ color: theme.subtext }}>
+                        <span>CropAd Creator</span>
+                        <span className="font-mono">Swipe ➔</span>
+                      </div>
+                    </div>
                   ))}
                 </div>
+
+                {/* LinkedIn Begleittext Copy-Box */}
+                {postCopy && (
+                  <div className="bg-zinc-900/70 border border-zinc-800 rounded-3xl p-6 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-blue-400" />
+                        LinkedIn Begleittext (Post Copy)
+                      </h3>
+                      <button
+                        onClick={copyToClipboard}
+                        className="bg-zinc-800 hover:bg-zinc-700 text-xs text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            Kopiert!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            Kopieren
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <pre className="bg-zinc-950 p-4 rounded-xl text-xs text-zinc-300 font-sans whitespace-pre-wrap leading-relaxed border border-zinc-800/80">
+                      {postCopy}
+                    </pre>
+                  </div>
+                )}
               </div>
             )}
           </div>
