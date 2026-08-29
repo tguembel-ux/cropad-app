@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useUser, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import {
   Sparkles,
@@ -18,9 +18,12 @@ import {
   Plus,
   User,
   GripVertical,
+  Download,
 } from "lucide-react";
+import { toPng } from "html-to-image";
+import jsPDF from "jspdf";
 
-// Vordefinierte, hochwertige B2B-Farbpresets
+// Vordefinierte B2B-Farbpresets
 const COLOR_PRESETS = [
   {
     name: "Dark Slate",
@@ -57,9 +60,9 @@ const COLOR_PRESETS = [
 ];
 
 const AD_FORMATS = [
-  { id: "4_5", name: "LinkedIn Karussell (4:5)", desc: "1080 × 1350 px (PDF)", aspect: "aspect-[4/5]" },
-  { id: "1_1", name: "Square Post (1:1)", desc: "1080 × 1080 px (Feed)", aspect: "aspect-square" },
-  { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels)", aspect: "aspect-[9/16]" },
+  { id: "4_5", name: "LinkedIn Karussell (4:5)", desc: "1080 × 1350 px (PDF)", aspect: "aspect-[4/5]", width: 1080, height: 1350 },
+  { id: "1_1", name: "Square Post (1:1)", desc: "1080 × 1080 px (Feed)", aspect: "aspect-square", width: 1080, height: 1080 },
+  { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels)", aspect: "aspect-[9/16]", width: 1080, height: 1920 },
 ];
 
 interface Slide {
@@ -72,6 +75,7 @@ interface Slide {
 export default function Home() {
   const { isSignedIn, isLoaded } = useUser();
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [content, setContent] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
   const [numSlides, setNumSlides] = useState(5);
@@ -99,6 +103,9 @@ export default function Home() {
 
   // Drag & Drop State
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  // Refs für Folien-HTML-Elemente zum Rendern
+  const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const isValidHex = (hex: string) => {
     return /^#([0-9A-F]{3}){1,2}$/i.test(hex);
@@ -176,7 +183,6 @@ export default function Home() {
     }
   };
 
-  // Folien Inline-Bearbeitung
   const updateSlideField = (index: number, field: keyof Slide, value: string) => {
     setSlides((prev) => {
       const updated = [...prev];
@@ -185,7 +191,6 @@ export default function Home() {
     });
   };
 
-  // Folien-Management: Verschieben via Buttons
   const moveSlide = (index: number, direction: "left" | "right") => {
     if (
       (direction === "left" && index === 0) ||
@@ -204,7 +209,6 @@ export default function Home() {
     });
   };
 
-  // Folien-Management: Drag & Drop
   const handleDragStart = (index: number) => {
     setDraggedIndex(index);
   };
@@ -226,7 +230,6 @@ export default function Home() {
     setDraggedIndex(null);
   };
 
-  // Folien-Management: Löschen
   const deleteSlide = (index: number) => {
     if (slides.length <= 1) {
       alert("Ein Karussell benötigt mindestens eine Folie.");
@@ -235,7 +238,6 @@ export default function Home() {
     setSlides((prev) => prev.filter((_, idx) => idx !== index));
   };
 
-  // Folien-Management: Neue Folie anfügen
   const addSlide = () => {
     if (slides.length >= 12) {
       alert("Maximal 12 Folien sind im Editor erlaubt.");
@@ -257,6 +259,59 @@ export default function Home() {
     navigator.clipboard.writeText(postCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // --- HIGH-RES PDF EXPORT ENGINE ---
+  const handleExportPDF = async () => {
+    if (slides.length === 0) return;
+    setExporting(true);
+
+    try {
+      const activeFmt = AD_FORMATS.find((f) => f.id === selectedFormat) || AD_FORMATS[0];
+      const orientation = activeFmt.width > activeFmt.height ? "landscape" : "portrait";
+
+      const pdf = new jsPDF({
+        orientation: orientation,
+        unit: "px",
+        format: [activeFmt.width, activeFmt.height],
+        hotfixes: ["px_scaling"],
+      });
+
+      for (let i = 0; i < slides.length; i++) {
+        const slideEl = slideRefs.current[i];
+        if (!slideEl) continue;
+
+        // Gestochen scharfes Rendern mit Vollauflösung & 0px Rand für saubere Kanten
+        const imgData = await toPng(slideEl, {
+          canvasWidth: activeFmt.width,
+          canvasHeight: activeFmt.height,
+          pixelRatio: 2,
+          style: {
+            borderRadius: "0px",
+            transform: "scale(1)",
+          },
+          filter: (node) => {
+            if (node instanceof HTMLElement && node.classList.contains("no-export")) {
+              return false;
+            }
+            return true;
+          },
+        });
+
+        if (i > 0) {
+          pdf.addPage([activeFmt.width, activeFmt.height], orientation);
+        }
+
+        pdf.addImage(imgData, "PNG", 0, 0, activeFmt.width, activeFmt.height);
+      }
+
+      pdf.save(`CropAd-Karussell-${Date.now()}.pdf`);
+    } catch (err) {
+      console.error("PDF Export Fehler:", err);
+      alert("Fehler beim Erstellen des PDFs.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (!isLoaded) {
@@ -587,37 +642,57 @@ export default function Home() {
               </div>
             </div>
 
-            {/* UNTERER BEREICH: Live-Editor & Begleittext */}
+            {/* UNTERER BEREICH: Live-Editor & Export Bar */}
             {slides.length > 0 && (
               <div className="space-y-8 pt-4 border-t border-zinc-800 animate-in fade-in duration-300">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-900/40 p-4 rounded-2xl border border-zinc-800">
                   <div>
                     <h2 className="text-lg font-bold text-white flex items-center gap-2">
                       <span>Interaktiver Folien-Editor ({slides.length})</span>
-                      <span className="text-xs bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full font-normal">
-                        Live Editierbar
-                      </span>
                     </h2>
                     <p className="text-xs text-zinc-400">
-                      Nutze den 6-Punkte-Grip zum Ziehen & Ablegen (Drag & Drop) oder passe Texte direkt an[cite: 1, 2].
+                      Folien greifen & verschieben, anpassen und als Dokument-PDF herunterladen[cite: 1, 2].
                     </p>
                   </div>
 
-                  {/* Button: Neue Folie hinzufügen */}
-                  <button
-                    onClick={addSlide}
-                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs text-white px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition shadow-sm"
-                  >
-                    <Plus className="w-4 h-4 text-blue-400" />
-                    Folie hinzufügen
-                  </button>
+                  {/* Buttons: Folie hinzufügen & 1-Klick-PDF-Download */}
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <button
+                      onClick={addSlide}
+                      className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs text-white px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      <Plus className="w-4 h-4 text-blue-400" />
+                      Folie hinzufügen
+                    </button>
+
+                    <button
+                      onClick={handleExportPDF}
+                      disabled={exporting}
+                      className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 transition shadow-lg shadow-blue-600/25"
+                    >
+                      {exporting ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Erstelle PDF...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4" />
+                          PDF Karussell herunterladen
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
-                {/* Folien-Vorschau Grid mit Drag & Drop */}
+                {/* Folien-Vorschau Grid mit html-to-image Refs */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {slides.map((slide, idx) => (
                     <div
                       key={idx}
+                      ref={(el) => {
+                        slideRefs.current[idx] = el;
+                      }}
                       onDragOver={(e) => handleDragOver(e, idx)}
                       onDrop={() => handleDrop(idx)}
                       className={`relative group rounded-2xl p-6 flex flex-col justify-between shadow-2xl transition border ${
@@ -627,8 +702,8 @@ export default function Home() {
                       } ${activeFormatObj.aspect}`}
                       style={{ backgroundColor: theme.cardBg || theme.bg, color: theme.text }}
                     >
-                      {/* Entkoppelte Hover-Aktionsleiste zentriert über dem oberen Folienrand */}
-                      <div className="absolute -top-3.5 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-20">
+                      {/* Entkoppelte Hover-Aktionsleiste (mit no-export Klasse) */}
+                      <div className="no-export absolute -top-3.5 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-20">
                         <button
                           onClick={() => moveSlide(idx, "left")}
                           disabled={idx === 0}
@@ -654,15 +729,15 @@ export default function Home() {
                         </button>
                       </div>
 
-                      {/* Header der Folie: Grip-Icon, Tag & Folien-Nummer (Völlig frei von Buttons) */}
+                      {/* Header der Folie */}
                       <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase">
                         <div className="flex items-center gap-2">
-                          {/* 6-Punkte Drag-Handle */}
+                          {/* 6-Punkte Drag-Handle (mit no-export Klasse) */}
                           <div
                             draggable
                             onDragStart={() => handleDragStart(idx)}
                             title="Ziehen, um Folie zu verschieben"
-                            className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-zinc-800/60 text-zinc-400 hover:text-zinc-100 transition"
+                            className="no-export cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-zinc-800/60 text-zinc-400 hover:text-zinc-100 transition"
                           >
                             <GripVertical className="w-4 h-4" />
                           </div>
@@ -682,13 +757,12 @@ export default function Home() {
                           )}
                         </div>
 
-                        {/* Folien-Nummer (1 / 5) ist jetzt komplett frei und verdeckungsfrei */}
                         <span className="font-mono text-xs select-none" style={{ color: theme.subtext }}>
                           {idx + 1} / {slides.length}
                         </span>
                       </div>
 
-                      {/* Inhalt: Inline-editierbare Überschrift und Textkörper */}
+                      {/* Inhalt */}
                       <div className="my-auto space-y-3">
                         <textarea
                           rows={2}
