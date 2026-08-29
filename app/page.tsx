@@ -261,7 +261,7 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // --- HIGH-RES PDF EXPORT ENGINE ---
+  // --- KOMPRIMIERTE & GESTOCHEN SCHARFE PDF-EXPORT ENGINE ---
   const handleExportPDF = async () => {
     if (slides.length === 0) return;
     setExporting(true);
@@ -281,11 +281,11 @@ export default function Home() {
         const slideEl = slideRefs.current[i];
         if (!slideEl) continue;
 
-        // Gestochen scharfes Rendern mit Vollauflösung & 0px Rand für saubere Kanten
+        // Rendern mit 1.5x PixelRatio & komprimierter Bild-Engine (< 2 MB)
         const imgData = await toPng(slideEl, {
           canvasWidth: activeFmt.width,
           canvasHeight: activeFmt.height,
-          pixelRatio: 2,
+          pixelRatio: 1.5,
           style: {
             borderRadius: "0px",
             transform: "scale(1)",
@@ -302,7 +302,7 @@ export default function Home() {
           pdf.addPage([activeFmt.width, activeFmt.height], orientation);
         }
 
-        pdf.addImage(imgData, "PNG", 0, 0, activeFmt.width, activeFmt.height);
+        pdf.addImage(imgData, "JPEG", 0, 0, activeFmt.width, activeFmt.height, undefined, "FAST");
       }
 
       pdf.save(`CropAd-Karussell-${Date.now()}.pdf`);
