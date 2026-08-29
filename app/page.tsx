@@ -19,9 +19,11 @@ import {
   User,
   GripVertical,
   Download,
+  Archive,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import jsPDF from "jspdf";
+import JSZip from "jszip";
 
 // Vordefinierte B2B-Farbpresets
 const COLOR_PRESETS = [
@@ -60,7 +62,7 @@ const COLOR_PRESETS = [
 ];
 
 const AD_FORMATS = [
-  { id: "4_5", name: "LinkedIn Karussell (4:5)", desc: "1080 × 1350 px (PDF)", aspect: "aspect-[4/5]", width: 1080, height: 1350 },
+  { id: "4_5", name: "LinkedIn Karussell (4:5)", desc: "1080 × 1350 px (PDF / PNG)", aspect: "aspect-[4/5]", width: 1080, height: 1350 },
   { id: "1_1", name: "Square Post (1:1)", desc: "1080 × 1080 px (Feed)", aspect: "aspect-square", width: 1080, height: 1080 },
   { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels)", aspect: "aspect-[9/16]", width: 1080, height: 1920 },
 ];
@@ -75,13 +77,17 @@ interface Slide {
 export default function Home() {
   const { isSignedIn, isLoaded } = useUser();
   const [loading, setLoading] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingZip, setExportingZip] = useState(false);
   const [content, setContent] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
   const [numSlides, setNumSlides] = useState(5);
   const [selectedFormat, setSelectedFormat] = useState("4_5");
   const [theme, setTheme] = useState(COLOR_PRESETS[0]);
   const [showCustomColors, setShowCustomColors] = useState(false);
+
+  // Dateiname & Projekt
+  const [projectName, setProjectName] = useState("CropAd-Projekt");
 
   // Folien-Optionen
   const [showTags, setShowTags] = useState(true);
@@ -261,10 +267,10 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // --- KOMPRIMIERTE & GESTOCHEN SCHARFE PDF-EXPORT ENGINE ---
+  // --- HIGH-RES & KOMPRIMIERTE PDF-EXPORT ENGINE (FÜR LINKEDIN) ---
   const handleExportPDF = async () => {
     if (slides.length === 0) return;
-    setExporting(true);
+    setExportingPdf(true);
 
     try {
       const activeFmt = AD_FORMATS.find((f) => f.id === selectedFormat) || AD_FORMATS[0];
@@ -281,7 +287,6 @@ export default function Home() {
         const slideEl = slideRefs.current[i];
         if (!slideEl) continue;
 
-        // Rendern mit 1.5x PixelRatio & komprimierter Bild-Engine (< 2 MB)
         const imgData = await toPng(slideEl, {
           canvasWidth: activeFmt.width,
           canvasHeight: activeFmt.height,
@@ -305,12 +310,71 @@ export default function Home() {
         pdf.addImage(imgData, "JPEG", 0, 0, activeFmt.width, activeFmt.height, undefined, "FAST");
       }
 
-      pdf.save(`CropAd-Karussell-${Date.now()}.pdf`);
+      const fileName = projectName.trim() ? `${projectName.trim()}.pdf` : `CropAd-Karussell-${Date.now()}.pdf`;
+      pdf.save(fileName);
     } catch (err) {
       console.error("PDF Export Fehler:", err);
       alert("Fehler beim Erstellen des PDFs.");
     } finally {
-      setExporting(false);
+      setExportingPdf(false);
+    }
+  };
+
+  // --- PNG MULTI-DOWNLOAD & ZIP ENGINE (FÜR INSTAGRAM, THREADS, TIKTOK) ---
+  const handleExportZIP = async () => {
+    if (slides.length === 0) return;
+    setExportingZip(true);
+
+    try {
+      const activeFmt = AD_FORMATS.find((f) => f.id === selectedFormat) || AD_FORMATS[0];
+      const zip = new JSZip();
+
+      for (let i = 0; i < slides.length; i++) {
+        const slideEl = slideRefs.current[i];
+        if (!slideEl) continue;
+
+        const imgData = await toPng(slideEl, {
+          canvasWidth: activeFmt.width,
+          canvasHeight: activeFmt.height,
+          pixelRatio: 1.5,
+          style: {
+            borderRadius: "0px",
+            transform: "scale(1)",
+          },
+          filter: (node) => {
+            if (node instanceof HTMLElement && node.classList.contains("no-export")) {
+              return false;
+            }
+            return true;
+          },
+        });
+
+        const base64Data = imgData.replace(/^data:image\/png;base64,/, "");
+        const slideNumberFormatted = String(i + 1).padStart(2, "0");
+        zip.file(`Folie-${slideNumberFormatted}.png`, base64Data, { base64: true });
+      }
+
+      if (postCopy) {
+        zip.file("Post-Text-Copy.txt", postCopy);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const downloadUrl = URL.createObjectURL(zipBlob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+
+      const fileName = projectName.trim() ? `${projectName.trim()}.zip` : `CropAd-Bilder-Set-${Date.now()}.zip`;
+      link.download = fileName;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error("ZIP Export Fehler:", err);
+      alert("Fehler beim Erstellen des ZIP-Pakets.");
+    } finally {
+      setExportingZip(false);
     }
   };
 
@@ -373,7 +437,7 @@ export default function Home() {
               Aus langen Inhalten zu viralen Karussells in Sekunden.
             </h2>
             <p className="text-zinc-400 leading-relaxed text-sm">
-              Verwandle Blogartikel, Skripte und Notizen per KI in gestochen scharfe LinkedIn-PDF-Karussells und fertige Begleittexte im eigenen Corporate Design[cite: 1, 2].
+              Verwandle Blogartikel, Skripte und Notizen per KI in gestochen scharfe LinkedIn-PDF-Karussells und fertige Begleittexte im eigenen Corporate Design.
             </p>
             <div className="pt-2">
               <SignUpButton mode="modal">
@@ -407,7 +471,7 @@ export default function Home() {
                   <div className="space-y-1.5">
                     <label className="text-xs text-zinc-400 flex items-center gap-1.5">
                       <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
-                      Optionale Anweisungen an die KI (z. B. Tonalität, Zielgruppe)[cite: 1, 2]
+                      Optionale Anweisungen an die KI (z. B. Tonalität, Zielgruppe)
                     </label>
                     <input
                       type="text"
@@ -583,12 +647,6 @@ export default function Home() {
                             type="color"
                             value={isValidHex(hexInputs.subtext) ? hexInputs.subtext : "#888888"}
                             onChange={(e) => handleColorPickerChange("subtext", e.target.value)}
-                            className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
-                          />
-                          <input
-                            type="text"
-                            value={hexInputs.subtext}
-                            onChange={(e) => handleHexChange("subtext", e.target.value)}
                             className="w-full bg-transparent text-xs font-mono text-zinc-200 focus:outline-none"
                             placeholder="#a1a1aa"
                           />
@@ -642,21 +700,34 @@ export default function Home() {
               </div>
             </div>
 
-            {/* UNTERER BEREICH: Live-Editor & Export Bar */}
+            {/* UNTERER BEREICH: Live-Editor & Dual-Export Bar */}
             {slides.length > 0 && (
               <div className="space-y-8 pt-4 border-t border-zinc-800 animate-in fade-in duration-300">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-900/40 p-4 rounded-2xl border border-zinc-800">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-zinc-900/40 p-4 rounded-2xl border border-zinc-800">
                   <div>
                     <h2 className="text-lg font-bold text-white flex items-center gap-2">
                       <span>Interaktiver Folien-Editor ({slides.length})</span>
                     </h2>
                     <p className="text-xs text-zinc-400">
-                      Folien greifen & verschieben, anpassen und als Dokument-PDF herunterladen[cite: 1, 2].
+                      Folien greifen & verschieben, anpassen und als PDF oder PNG-Set herunterladen.
                     </p>
                   </div>
 
-                  {/* Buttons: Folie hinzufügen & 1-Klick-PDF-Download */}
-                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                  {/* Buttons: Dateiname, Folie hinzufügen, PDF-Download & PNG-ZIP-Download */}
+                  <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+                    
+                    {/* Dateiname Input */}
+                    <div className="flex items-center bg-zinc-950/50 border border-zinc-700/60 rounded-xl px-3 py-2 focus-within:border-blue-500 transition shadow-sm">
+                      <input
+                        type="text"
+                        value={projectName}
+                        onChange={(e) => setProjectName(e.target.value)}
+                        placeholder="Projektname..."
+                        className="bg-transparent text-xs font-medium text-zinc-200 focus:outline-none w-28 sm:w-36 placeholder-zinc-500"
+                      />
+                      <span className="text-[10px] text-zinc-500 font-mono ml-1 select-none">.pdf/.zip</span>
+                    </div>
+
                     <button
                       onClick={addSlide}
                       className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs text-white px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition shadow-sm"
@@ -665,12 +736,34 @@ export default function Home() {
                       Folie hinzufügen
                     </button>
 
+                    {/* PNG-Set ZIP Download Button */}
+                    <button
+                      onClick={handleExportZIP}
+                      disabled={exportingZip || exportingPdf}
+                      className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-medium px-4 py-2.5 rounded-xl flex items-center gap-2 transition border border-zinc-700 shadow-sm"
+                      title="Alle Folien als durchnummerierte PNG-Bilder im ZIP-Paket herunterladen"
+                    >
+                      {exportingZip ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Erstelle ZIP...
+                        </>
+                      ) : (
+                        <>
+                          <Archive className="w-4 h-4 text-zinc-300" />
+                          PNG-Set (ZIP)
+                        </>
+                      )}
+                    </button>
+
+                    {/* PDF Download Button */}
                     <button
                       onClick={handleExportPDF}
-                      disabled={exporting}
+                      disabled={exportingPdf || exportingZip}
                       className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 transition shadow-lg shadow-blue-600/25"
+                      title="Als mehrseitiges PDF für LinkedIn herunterladen"
                     >
-                      {exporting ? (
+                      {exportingPdf ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
                           Erstelle PDF...
@@ -678,7 +771,7 @@ export default function Home() {
                       ) : (
                         <>
                           <Download className="w-4 h-4" />
-                          PDF Karussell herunterladen
+                          PDF Karussell
                         </>
                       )}
                     </button>
@@ -702,7 +795,7 @@ export default function Home() {
                       } ${activeFormatObj.aspect}`}
                       style={{ backgroundColor: theme.cardBg || theme.bg, color: theme.text }}
                     >
-                      {/* Entkoppelte Hover-Aktionsleiste (mit no-export Klasse) */}
+                      {/* Entkoppelte Hover-Aktionsleiste */}
                       <div className="no-export absolute -top-3.5 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-20">
                         <button
                           onClick={() => moveSlide(idx, "left")}
@@ -732,7 +825,6 @@ export default function Home() {
                       {/* Header der Folie */}
                       <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase">
                         <div className="flex items-center gap-2">
-                          {/* 6-Punkte Drag-Handle (mit no-export Klasse) */}
                           <div
                             draggable
                             onDragStart={() => handleDragStart(idx)}
@@ -802,7 +894,7 @@ export default function Home() {
                     <div className="flex justify-between items-center">
                       <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                         <FileText className="w-4 h-4 text-blue-400" />
-                        LinkedIn Begleittext (Post Copy)[cite: 1, 2]
+                        Social Media Begleittext (Post Copy)
                       </h3>
                       <button
                         onClick={copyToClipboard}
