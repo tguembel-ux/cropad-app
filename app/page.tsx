@@ -12,6 +12,12 @@ import {
   FileText,
   SlidersHorizontal,
   ChevronRight,
+  Trash2,
+  ArrowLeft,
+  ArrowRight,
+  Plus,
+  User,
+  GripVertical,
 } from "lucide-react";
 
 // Vordefinierte, hochwertige B2B-Farbpresets
@@ -56,6 +62,13 @@ const AD_FORMATS = [
   { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels)", aspect: "aspect-[9/16]" },
 ];
 
+interface Slide {
+  slideNumber: number;
+  tag: string;
+  headline: string;
+  content: string;
+}
+
 export default function Home() {
   const { isSignedIn, isLoaded } = useUser();
   const [loading, setLoading] = useState(false);
@@ -66,7 +79,12 @@ export default function Home() {
   const [theme, setTheme] = useState(COLOR_PRESETS[0]);
   const [showCustomColors, setShowCustomColors] = useState(false);
 
-  // Separate Text-States für die manuelle Hexcode-Eingabe
+  // Folien-Optionen
+  const [showTags, setShowTags] = useState(true);
+  const [authorName, setAuthorName] = useState("CropAd Creator");
+  const [authorHandle, setAuthorHandle] = useState("@cropad");
+
+  // Hexcode-Inputs
   const [hexInputs, setHexInputs] = useState({
     bg: COLOR_PRESETS[0].bg,
     accent: COLOR_PRESETS[0].accent,
@@ -75,16 +93,17 @@ export default function Home() {
   });
 
   // Ergebnis-States
-  const [slides, setSlides] = useState<any[]>([]);
+  const [slides, setSlides] = useState<Slide[]>([]);
   const [postCopy, setPostCopy] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
-  // Hilfsfunktion: Prüft, ob ein String ein gültiger 6-stelliger oder 3-stelliger Hex-Code ist
+  // Drag & Drop State
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
   const isValidHex = (hex: string) => {
     return /^#([0-9A-F]{3}){1,2}$/i.test(hex);
   };
 
-  // Verarbeitet die Eingabe von Hex-Codes über das Textfeld
   const handleHexChange = (key: "bg" | "accent" | "text" | "subtext", val: string) => {
     let formatted = val.trim();
     if (formatted.length > 0 && !formatted.startsWith("#")) {
@@ -102,7 +121,6 @@ export default function Home() {
     }
   };
 
-  // Verarbeitet die Auswahl über den Color-Picker
   const handleColorPickerChange = (key: "bg" | "accent" | "text" | "subtext", val: string) => {
     setHexInputs((prev) => ({ ...prev, [key]: val }));
     if (key === "bg") {
@@ -156,6 +174,82 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Folien Inline-Bearbeitung
+  const updateSlideField = (index: number, field: keyof Slide, value: string) => {
+    setSlides((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  // Folien-Management: Verschieben via Buttons
+  const moveSlide = (index: number, direction: "left" | "right") => {
+    if (
+      (direction === "left" && index === 0) ||
+      (direction === "right" && index === slides.length - 1)
+    ) {
+      return;
+    }
+
+    setSlides((prev) => {
+      const updated = [...prev];
+      const targetIndex = direction === "left" ? index - 1 : index + 1;
+      const temp = updated[index];
+      updated[index] = updated[targetIndex];
+      updated[targetIndex] = temp;
+      return updated;
+    });
+  };
+
+  // Folien-Management: Drag & Drop
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (targetIndex: number) => {
+    if (draggedIndex === null || draggedIndex === targetIndex) return;
+
+    setSlides((prev) => {
+      const updated = [...prev];
+      const draggedItem = updated[draggedIndex];
+      updated.splice(draggedIndex, 1);
+      updated.splice(targetIndex, 0, draggedItem);
+      return updated;
+    });
+    setDraggedIndex(null);
+  };
+
+  // Folien-Management: Löschen
+  const deleteSlide = (index: number) => {
+    if (slides.length <= 1) {
+      alert("Ein Karussell benötigt mindestens eine Folie.");
+      return;
+    }
+    setSlides((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  // Folien-Management: Neue Folie anfügen
+  const addSlide = () => {
+    if (slides.length >= 12) {
+      alert("Maximal 12 Folien sind im Editor erlaubt.");
+      return;
+    }
+    setSlides((prev) => [
+      ...prev,
+      {
+        slideNumber: prev.length + 1,
+        tag: "NEU",
+        headline: "Neue Überschrift",
+        content: "Klicke hier, um deinen eigenen Folientext einzugeben...",
+      },
+    ]);
   };
 
   const copyToClipboard = () => {
@@ -224,7 +318,7 @@ export default function Home() {
               Aus langen Inhalten zu viralen Karussells in Sekunden.
             </h2>
             <p className="text-zinc-400 leading-relaxed text-sm">
-              Verwandle Blogartikel, Skripte und Notizen per KI in gestochen scharfe LinkedIn-PDF-Karussells und fertige Begleittexte im eigenen Corporate Design.
+              Verwandle Blogartikel, Skripte und Notizen per KI in gestochen scharfe LinkedIn-PDF-Karussells und fertige Begleittexte im eigenen Corporate Design[cite: 1, 2].
             </p>
             <div className="pt-2">
               <SignUpButton mode="modal">
@@ -258,7 +352,7 @@ export default function Home() {
                   <div className="space-y-1.5">
                     <label className="text-xs text-zinc-400 flex items-center gap-1.5">
                       <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
-                      Optionale Anweisungen an die KI (z. B. Tonalität, Zielgruppe)
+                      Optionale Anweisungen an die KI (z. B. Tonalität, Zielgruppe)[cite: 1, 2]
                     </label>
                     <input
                       type="text"
@@ -269,7 +363,7 @@ export default function Home() {
                     />
                   </div>
 
-                  {/* Slider: Folienanzahl (JETZT AB 1 FOLIE) */}
+                  {/* Slider: Folienanzahl */}
                   <div className="flex items-center justify-between pt-2">
                     <span className="text-xs text-zinc-400">
                       Anzahl Folien: <strong className="text-white">{numSlides}</strong>
@@ -305,7 +399,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Rechte Spalte: Format- & Farb-Einstellungen */}
+              {/* Rechte Spalte: Format, Farb-Einstellungen & Branding-Footer */}
               <div className="lg:col-span-5 space-y-6">
                 {/* Format-Auswahl */}
                 <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-3xl space-y-3">
@@ -347,7 +441,6 @@ export default function Home() {
                   </div>
 
                   {!showCustomColors ? (
-                    /* Preset Buttons */
                     <div className="grid grid-cols-2 gap-2">
                       {COLOR_PRESETS.map((p) => (
                         <button
@@ -370,9 +463,7 @@ export default function Home() {
                       ))}
                     </div>
                   ) : (
-                    /* Custom Color Picker + Manuelle Hex-Eingabe */
                     <div className="grid grid-cols-2 gap-3 pt-1">
-                      {/* Hintergrund */}
                       <div>
                         <label className="text-[10px] text-zinc-400 block mb-1">Hintergrund</label>
                         <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
@@ -392,7 +483,6 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* Akzent */}
                       <div>
                         <label className="text-[10px] text-zinc-400 block mb-1">Akzentfarbe</label>
                         <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
@@ -412,7 +502,6 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* Überschrift */}
                       <div>
                         <label className="text-[10px] text-zinc-400 block mb-1">Überschrift / Text</label>
                         <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
@@ -432,7 +521,6 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* Untertext */}
                       <div>
                         <label className="text-[10px] text-zinc-400 block mb-1">Untertext</label>
                         <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
@@ -454,53 +542,180 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+
+                {/* Folien-Optionen & Branding-Footer */}
+                <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-3xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-blue-400" />
+                      Branding & Footer
+                    </h3>
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-400">
+                      <input
+                        type="checkbox"
+                        checked={showTags}
+                        onChange={(e) => setShowTags(e.target.checked)}
+                        className="rounded accent-blue-600 cursor-pointer"
+                      />
+                      Tags anzeigen
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <label className="text-[10px] text-zinc-400 block mb-1">Name / Brand</label>
+                      <input
+                        type="text"
+                        value={authorName}
+                        onChange={(e) => setAuthorName(e.target.value)}
+                        placeholder="CropAd Creator"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-zinc-400 block mb-1">Social Handle</label>
+                      <input
+                        type="text"
+                        value={authorHandle}
+                        onChange={(e) => setAuthorHandle(e.target.value)}
+                        placeholder="@cropad"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* UNTERER BEREICH: Live-Ergebnisse & Begleittext */}
+            {/* UNTERER BEREICH: Live-Editor & Begleittext */}
             {slides.length > 0 && (
               <div className="space-y-8 pt-4 border-t border-zinc-800 animate-in fade-in duration-300">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
-                    <h2 className="text-lg font-bold text-white">Generierte Karussell-Folien ({slides.length})</h2>
-                    <p className="text-xs text-zinc-400">Vorschau im gewählten Design-Theme</p>
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                      <span>Interaktiver Folien-Editor ({slides.length})</span>
+                      <span className="text-xs bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full font-normal">
+                        Live Editierbar
+                      </span>
+                    </h2>
+                    <p className="text-xs text-zinc-400">
+                      Nutze den 6-Punkte-Grip zum Ziehen & Ablegen (Drag & Drop) oder passe Texte direkt an[cite: 1, 2].
+                    </p>
                   </div>
+
+                  {/* Button: Neue Folie hinzufügen */}
+                  <button
+                    onClick={addSlide}
+                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs text-white px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <Plus className="w-4 h-4 text-blue-400" />
+                    Folie hinzufügen
+                  </button>
                 </div>
 
-                {/* Folien-Vorschau Grid */}
+                {/* Folien-Vorschau Grid mit Drag & Drop */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {slides.map((slide, idx) => (
                     <div
                       key={idx}
-                      className={`relative rounded-2xl p-6 flex flex-col justify-between shadow-2xl transition border border-zinc-700/40 ${activeFormatObj.aspect}`}
+                      onDragOver={(e) => handleDragOver(e, idx)}
+                      onDrop={() => handleDrop(idx)}
+                      className={`relative group rounded-2xl p-6 flex flex-col justify-between shadow-2xl transition border ${
+                        draggedIndex === idx
+                          ? "opacity-40 border-dashed border-blue-500 scale-95"
+                          : "border-zinc-700/40 hover:border-zinc-500/60"
+                      } ${activeFormatObj.aspect}`}
                       style={{ backgroundColor: theme.cardBg || theme.bg, color: theme.text }}
                     >
-                      {/* Header der Folie */}
-                      <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase">
-                        <span
-                          className="px-2 py-0.5 rounded"
-                          style={{ backgroundColor: `${theme.accent}20`, color: theme.accent }}
+                      {/* Entkoppelte Hover-Aktionsleiste zentriert über dem oberen Folienrand */}
+                      <div className="absolute -top-3.5 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-20">
+                        <button
+                          onClick={() => moveSlide(idx, "left")}
+                          disabled={idx === 0}
+                          title="Nach links verschieben"
+                          className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300 transition"
                         >
-                          {slide.tag || `Slide ${slide.slideNumber}`}
-                        </span>
-                        <span style={{ color: theme.subtext }}>
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => moveSlide(idx, "right")}
+                          disabled={idx === slides.length - 1}
+                          title="Nach rechts verschieben"
+                          className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300 transition"
+                        >
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => deleteSlide(idx)}
+                          title="Folie löschen"
+                          className="p-1 rounded-lg hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Header der Folie: Grip-Icon, Tag & Folien-Nummer (Völlig frei von Buttons) */}
+                      <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase">
+                        <div className="flex items-center gap-2">
+                          {/* 6-Punkte Drag-Handle */}
+                          <div
+                            draggable
+                            onDragStart={() => handleDragStart(idx)}
+                            title="Ziehen, um Folie zu verschieben"
+                            className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-zinc-800/60 text-zinc-400 hover:text-zinc-100 transition"
+                          >
+                            <GripVertical className="w-4 h-4" />
+                          </div>
+
+                          {showTags && (
+                            <input
+                              type="text"
+                              value={slide.tag || ""}
+                              onChange={(e) => updateSlideField(idx, "tag", e.target.value)}
+                              placeholder="TAG"
+                              className="px-2 py-0.5 rounded font-mono text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 w-24 bg-transparent"
+                              style={{
+                                backgroundColor: `${theme.accent}20`,
+                                color: theme.accent,
+                              }}
+                            />
+                          )}
+                        </div>
+
+                        {/* Folien-Nummer (1 / 5) ist jetzt komplett frei und verdeckungsfrei */}
+                        <span className="font-mono text-xs select-none" style={{ color: theme.subtext }}>
                           {idx + 1} / {slides.length}
                         </span>
                       </div>
 
-                      {/* Inhalt */}
+                      {/* Inhalt: Inline-editierbare Überschrift und Textkörper */}
                       <div className="my-auto space-y-3">
-                        <h3 className="font-bold text-base leading-snug" style={{ color: theme.text }}>
-                          {slide.headline}
-                        </h3>
-                        <p className="text-xs leading-relaxed" style={{ color: theme.subtext }}>
-                          {slide.content}
-                        </p>
+                        <textarea
+                          rows={2}
+                          value={slide.headline}
+                          onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                          placeholder="Überschrift eingeben..."
+                          className="w-full bg-transparent font-bold text-base leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                          style={{ color: theme.text }}
+                        />
+                        <textarea
+                          rows={4}
+                          value={slide.content}
+                          onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                          placeholder="Folientext eingeben..."
+                          className="w-full bg-transparent text-xs leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                          style={{ color: theme.subtext }}
+                        />
                       </div>
 
                       {/* Footer Branding Bar */}
-                      <div className="pt-3 border-t border-zinc-800/40 flex items-center justify-between text-[10px]" style={{ color: theme.subtext }}>
-                        <span>CropAd Creator</span>
+                      <div
+                        className="pt-3 border-t border-zinc-800/40 flex items-center justify-between text-[10px]"
+                        style={{ color: theme.subtext }}
+                      >
+                        <span className="truncate max-w-[140px] font-medium">
+                          {authorName} <span className="opacity-60">{authorHandle}</span>
+                        </span>
                         <span className="font-mono">Swipe ➔</span>
                       </div>
                     </div>
@@ -513,7 +728,7 @@ export default function Home() {
                     <div className="flex justify-between items-center">
                       <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                         <FileText className="w-4 h-4 text-blue-400" />
-                        LinkedIn Begleittext (Post Copy)
+                        LinkedIn Begleittext (Post Copy)[cite: 1, 2]
                       </h3>
                       <button
                         onClick={copyToClipboard}
