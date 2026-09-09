@@ -20,6 +20,11 @@ import {
   GripVertical,
   Download,
   Archive,
+  LayoutTemplate,
+  Quote,
+  ListOrdered,
+  Megaphone,
+  AlignLeft,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import jsPDF from "jspdf";
@@ -67,9 +72,12 @@ const AD_FORMATS = [
   { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels)", aspect: "aspect-[9/16]", width: 1080, height: 1920 },
 ];
 
+export type LayoutType = "cover" | "statement" | "bullets" | "quote" | "cta";
+
 interface Slide {
   slideNumber: number;
   tag: string;
+  layoutType?: LayoutType;
   headline: string;
   content: string;
 }
@@ -253,7 +261,8 @@ export default function Home() {
       ...prev,
       {
         slideNumber: prev.length + 1,
-        tag: "NEU",
+        tag: "CONTENT",
+        layoutType: "statement",
         headline: "Neue Überschrift",
         content: "Klicke hier, um deinen eigenen Folientext einzugeben...",
       },
@@ -267,7 +276,7 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // --- HIGH-RES & KOMPRIMIERTE PDF-EXPORT ENGINE (FÜR LINKEDIN) ---
+  // PDF-Export
   const handleExportPDF = async () => {
     if (slides.length === 0) return;
     setExportingPdf(true);
@@ -320,7 +329,7 @@ export default function Home() {
     }
   };
 
-  // --- PNG MULTI-DOWNLOAD & ZIP ENGINE (FÜR INSTAGRAM, THREADS, TIKTOK) ---
+  // ZIP-Export
   const handleExportZIP = async () => {
     if (slides.length === 0) return;
     setExportingZip(true);
@@ -365,7 +374,7 @@ export default function Home() {
 
       const fileName = projectName.trim() ? `${projectName.trim()}.zip` : `CropAd-Bilder-Set-${Date.now()}.zip`;
       link.download = fileName;
-      
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -647,6 +656,12 @@ export default function Home() {
                             type="color"
                             value={isValidHex(hexInputs.subtext) ? hexInputs.subtext : "#888888"}
                             onChange={(e) => handleColorPickerChange("subtext", e.target.value)}
+                            className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                          />
+                          <input
+                            type="text"
+                            value={hexInputs.subtext}
+                            onChange={(e) => handleHexChange("subtext", e.target.value)}
                             className="w-full bg-transparent text-xs font-mono text-zinc-200 focus:outline-none"
                             placeholder="#a1a1aa"
                           />
@@ -709,13 +724,12 @@ export default function Home() {
                       <span>Interaktiver Folien-Editor ({slides.length})</span>
                     </h2>
                     <p className="text-xs text-zinc-400">
-                      Folien greifen & verschieben, anpassen und als PDF oder PNG-Set herunterladen.
+                      Wähle pro Folie ein modulares Layout, passe Texte an und lade dein PDF-Karussell herunter.
                     </p>
                   </div>
 
                   {/* Buttons: Dateiname, Folie hinzufügen, PDF-Download & PNG-ZIP-Download */}
                   <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
-                    
                     {/* Dateiname Input */}
                     <div className="flex items-center bg-zinc-950/50 border border-zinc-700/60 rounded-xl px-3 py-2 focus-within:border-blue-500 transition shadow-sm">
                       <input
@@ -736,7 +750,7 @@ export default function Home() {
                       Folie hinzufügen
                     </button>
 
-                    {/* PNG-Set ZIP Download Button */}
+                    {/* PNG-Set ZIP Download */}
                     <button
                       onClick={handleExportZIP}
                       disabled={exportingZip || exportingPdf}
@@ -756,7 +770,7 @@ export default function Home() {
                       )}
                     </button>
 
-                    {/* PDF Download Button */}
+                    {/* PDF Download */}
                     <button
                       onClick={handleExportPDF}
                       disabled={exportingPdf || exportingZip}
@@ -778,114 +792,240 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Folien-Vorschau Grid mit html-to-image Refs */}
+                {/* Folien-Vorschau Grid mit dynamischem Layout-Rendering */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {slides.map((slide, idx) => (
-                    <div
-                      key={idx}
-                      ref={(el) => {
-                        slideRefs.current[idx] = el;
-                      }}
-                      onDragOver={(e) => handleDragOver(e, idx)}
-                      onDrop={() => handleDrop(idx)}
-                      className={`relative group rounded-2xl p-6 flex flex-col justify-between shadow-2xl transition border ${
-                        draggedIndex === idx
-                          ? "opacity-40 border-dashed border-blue-500 scale-95"
-                          : "border-zinc-700/40 hover:border-zinc-500/60"
-                      } ${activeFormatObj.aspect}`}
-                      style={{ backgroundColor: theme.cardBg || theme.bg, color: theme.text }}
-                    >
-                      {/* Entkoppelte Hover-Aktionsleiste */}
-                      <div className="no-export absolute -top-3.5 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-20">
-                        <button
-                          onClick={() => moveSlide(idx, "left")}
-                          disabled={idx === 0}
-                          title="Nach links verschieben"
-                          className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300 transition"
-                        >
-                          <ArrowLeft className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => moveSlide(idx, "right")}
-                          disabled={idx === slides.length - 1}
-                          title="Nach rechts verschieben"
-                          className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300 transition"
-                        >
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => deleteSlide(idx)}
-                          title="Folie löschen"
-                          className="p-1 rounded-lg hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                  {slides.map((slide, idx) => {
+                    const currentLayout: LayoutType = slide.layoutType || (idx === 0 ? "cover" : idx === slides.length - 1 ? "cta" : "statement");
 
-                      {/* Header der Folie */}
-                      <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase">
-                        <div className="flex items-center gap-2">
-                          <div
-                            draggable
-                            onDragStart={() => handleDragStart(idx)}
-                            title="Ziehen, um Folie zu verschieben"
-                            className="no-export cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-zinc-800/60 text-zinc-400 hover:text-zinc-100 transition"
+                    return (
+                      <div
+                        key={idx}
+                        ref={(el) => {
+                          slideRefs.current[idx] = el;
+                        }}
+                        onDragOver={(e) => handleDragOver(e, idx)}
+                        onDrop={() => handleDrop(idx)}
+                        className={`relative group rounded-2xl p-6 flex flex-col justify-between shadow-2xl transition border ${
+                          draggedIndex === idx
+                            ? "opacity-40 border-dashed border-blue-500 scale-95"
+                            : "border-zinc-700/40 hover:border-zinc-500/60"
+                        } ${activeFormatObj.aspect}`}
+                        style={{ backgroundColor: theme.cardBg || theme.bg, color: theme.text }}
+                      >
+                        {/* Entkoppelte Hover-Aktionsleiste: Verschieben & Löschen */}
+                        <div className="no-export absolute -top-3.5 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-20">
+                          <button
+                            onClick={() => moveSlide(idx, "left")}
+                            disabled={idx === 0}
+                            title="Nach links verschieben"
+                            className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300 transition"
                           >
-                            <GripVertical className="w-4 h-4" />
+                            <ArrowLeft className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => moveSlide(idx, "right")}
+                            disabled={idx === slides.length - 1}
+                            title="Nach rechts verschieben"
+                            className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300 transition"
+                          >
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => deleteSlide(idx)}
+                            title="Folie löschen"
+                            className="p-1 rounded-lg hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Header der Folie: Grip, Tag, Layout-Switcher & Slide-Nummer */}
+                        <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase">
+                          <div className="flex items-center gap-2">
+                            <div
+                              draggable
+                              onDragStart={() => handleDragStart(idx)}
+                              title="Ziehen, um Folie zu verschieben"
+                              className="no-export cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-zinc-800/60 text-zinc-400 hover:text-zinc-100 transition"
+                            >
+                              <GripVertical className="w-4 h-4" />
+                            </div>
+
+                            {showTags && (
+                              <input
+                                type="text"
+                                value={slide.tag || ""}
+                                onChange={(e) => updateSlideField(idx, "tag", e.target.value)}
+                                placeholder="TAG"
+                                className="px-2 py-0.5 rounded font-mono text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 w-20 bg-transparent"
+                                style={{
+                                  backgroundColor: `${theme.accent}20`,
+                                  color: theme.accent,
+                                }}
+                              />
+                            )}
+
+                            {/* Layout-Switcher Dropdown (no-export) */}
+                            <div className="no-export flex items-center">
+                              <select
+                                value={currentLayout}
+                                onChange={(e) => updateSlideField(idx, "layoutType", e.target.value)}
+                                className="bg-zinc-900 border border-zinc-700/80 rounded-lg px-1.5 py-0.5 text-[10px] text-zinc-300 focus:outline-none focus:border-blue-500 cursor-pointer font-sans"
+                                title="Layout dieser Folie ändern"
+                              >
+                                <option value="cover">📐 Cover / Hook</option>
+                                <option value="statement">📐 Statement</option>
+                                <option value="bullets">📐 Liste / Steps</option>
+                                <option value="quote">📐 Zitat</option>
+                                <option value="cta">📐 Call to Action</option>
+                              </select>
+                            </div>
                           </div>
 
-                          {showTags && (
-                            <input
-                              type="text"
-                              value={slide.tag || ""}
-                              onChange={(e) => updateSlideField(idx, "tag", e.target.value)}
-                              placeholder="TAG"
-                              className="px-2 py-0.5 rounded font-mono text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 w-24 bg-transparent"
-                              style={{
-                                backgroundColor: `${theme.accent}20`,
-                                color: theme.accent,
-                              }}
-                            />
+                          <span className="font-mono text-xs select-none" style={{ color: theme.subtext }}>
+                            {idx + 1} / {slides.length}
+                          </span>
+                        </div>
+
+                        {/* DYNAMISCHER INHALT JE NACH LAYOUT-TYP */}
+                        <div className="my-auto w-full">
+                          {/* 1. COVER / HOOK LAYOUT */}
+                          {currentLayout === "cover" && (
+                            <div className="space-y-4 text-center px-2">
+                              <div
+                                className="inline-block px-3 py-1 rounded-full text-[10px] font-semibold tracking-widest uppercase border"
+                                style={{ borderColor: `${theme.accent}40`, color: theme.accent, backgroundColor: `${theme.accent}15` }}
+                              >
+                                {authorName}
+                              </div>
+                              <textarea
+                                rows={3}
+                                value={slide.headline}
+                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                placeholder="Hook Headline eingeben..."
+                                className="w-full bg-transparent font-extrabold text-xl sm:text-2xl leading-tight text-center focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                style={{ color: theme.text }}
+                              />
+                              <textarea
+                                rows={3}
+                                value={slide.content}
+                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                placeholder="Teaser-Text..."
+                                className="w-full bg-transparent text-xs leading-relaxed text-center focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                style={{ color: theme.subtext }}
+                              />
+                            </div>
+                          )}
+
+                          {/* 2. BULLETS / LIST LAYOUT */}
+                          {currentLayout === "bullets" && (
+                            <div className="space-y-3">
+                              <textarea
+                                rows={2}
+                                value={slide.headline}
+                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                placeholder="Listen-Überschrift..."
+                                className="w-full bg-transparent font-bold text-base leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                style={{ color: theme.text }}
+                              />
+                              <div
+                                className="p-3.5 rounded-xl border border-dashed transition"
+                                style={{ borderColor: `${theme.accent}40`, backgroundColor: `${theme.accent}08` }}
+                              >
+                                <textarea
+                                  rows={4}
+                                  value={slide.content}
+                                  onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                  placeholder="• Punkt 1&#10;• Punkt 2&#10;• Punkt 3..."
+                                  className="w-full bg-transparent text-xs leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                  style={{ color: theme.text }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 3. QUOTE / ZITAT LAYOUT */}
+                          {currentLayout === "quote" && (
+                            <div className="space-y-2 relative">
+                              <Quote className="w-8 h-8 opacity-20 absolute -top-4 -left-2 select-none" style={{ color: theme.accent }} />
+                              <textarea
+                                rows={3}
+                                value={slide.headline}
+                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                placeholder="„Kernaussage oder Zitat...“"
+                                className="w-full bg-transparent font-serif italic font-bold text-lg leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                style={{ color: theme.text }}
+                              />
+                              <textarea
+                                rows={2}
+                                value={slide.content}
+                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                placeholder="Autor / Kontext des Zitats..."
+                                className="w-full bg-transparent text-xs font-mono leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                style={{ color: theme.accent }}
+                              />
+                            </div>
+                          )}
+
+                          {/* 4. CTA / OUTRO LAYOUT */}
+                          {currentLayout === "cta" && (
+                            <div className="space-y-3 text-center px-2">
+                              <Megaphone className="w-6 h-6 mx-auto mb-1 opacity-80" style={{ color: theme.accent }} />
+                              <textarea
+                                rows={2}
+                                value={slide.headline}
+                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                placeholder="Call to Action Headline..."
+                                className="w-full bg-transparent font-bold text-base text-center leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                style={{ color: theme.text }}
+                              />
+                              <textarea
+                                rows={3}
+                                value={slide.content}
+                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                placeholder="Was soll der Leser jetzt tun? (Folgen, Kommentieren...)"
+                                className="w-full bg-transparent text-xs text-center leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                style={{ color: theme.subtext }}
+                              />
+                            </div>
+                          )}
+
+                          {/* 5. STATEMENT (STANDARD) LAYOUT */}
+                          {currentLayout === "statement" && (
+                            <div className="space-y-3">
+                              <textarea
+                                rows={2}
+                                value={slide.headline}
+                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                placeholder="Überschrift eingeben..."
+                                className="w-full bg-transparent font-bold text-base leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                style={{ color: theme.text }}
+                              />
+                              <textarea
+                                rows={4}
+                                value={slide.content}
+                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                placeholder="Folientext eingeben..."
+                                className="w-full bg-transparent text-xs leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                style={{ color: theme.subtext }}
+                              />
+                            </div>
                           )}
                         </div>
 
-                        <span className="font-mono text-xs select-none" style={{ color: theme.subtext }}>
-                          {idx + 1} / {slides.length}
-                        </span>
-                      </div>
-
-                      {/* Inhalt */}
-                      <div className="my-auto space-y-3">
-                        <textarea
-                          rows={2}
-                          value={slide.headline}
-                          onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                          placeholder="Überschrift eingeben..."
-                          className="w-full bg-transparent font-bold text-base leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
-                          style={{ color: theme.text }}
-                        />
-                        <textarea
-                          rows={4}
-                          value={slide.content}
-                          onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                          placeholder="Folientext eingeben..."
-                          className="w-full bg-transparent text-xs leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                        {/* Footer Branding Bar */}
+                        <div
+                          className="pt-3 border-t border-zinc-800/40 flex items-center justify-between text-[10px]"
                           style={{ color: theme.subtext }}
-                        />
+                        >
+                          <span className="truncate max-w-[140px] font-medium">
+                            {authorName} <span className="opacity-60">{authorHandle}</span>
+                          </span>
+                          <span className="font-mono">Swipe ➔</span>
+                        </div>
                       </div>
-
-                      {/* Footer Branding Bar */}
-                      <div
-                        className="pt-3 border-t border-zinc-800/40 flex items-center justify-between text-[10px]"
-                        style={{ color: theme.subtext }}
-                      >
-                        <span className="truncate max-w-[140px] font-medium">
-                          {authorName} <span className="opacity-60">{authorHandle}</span>
-                        </span>
-                        <span className="font-mono">Swipe ➔</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* LinkedIn Begleittext Copy-Box */}
