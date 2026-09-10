@@ -25,12 +25,13 @@ import {
   Type,
   Upload,
   BookmarkPlus,
+  Info,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import jsPDF from "jspdf";
 import JSZip from "jszip";
 
-// Vordefinierte Farbpresets
+// Vordefinierte B2B-Farbpresets
 const DEFAULT_COLOR_PRESETS = [
   {
     name: "Dark Slate",
@@ -77,7 +78,7 @@ const FONT_PRESETS = [
 const AD_FORMATS = [
   { id: "4_5", name: "LinkedIn Karussell (4:5)", desc: "1080 × 1350 px (PDF / PNG)", aspect: "aspect-[4/5]", width: 1080, height: 1350 },
   { id: "1_1", name: "Square Post (1:1)", desc: "1080 × 1080 px (Feed)", aspect: "aspect-square", width: 1080, height: 1080 },
-  { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels)", aspect: "aspect-[9/16]", width: 1080, height: 1920 },
+  { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels / Stories)", aspect: "aspect-[9/16]", width: 1080, height: 1920 },
 ];
 
 export type LayoutType = "cover" | "statement" | "bullets" | "quote" | "cta";
@@ -127,7 +128,7 @@ export default function Home() {
   const [authorName, setAuthorName] = useState("CropAd Creator");
   const [authorHandle, setAuthorHandle] = useState("@cropad");
 
-  // Hexcode-Inputs
+  // Hexcode-Inputs (inkl. Untertext)
   const [hexInputs, setHexInputs] = useState({
     bg: DEFAULT_COLOR_PRESETS[0].bg,
     accent: DEFAULT_COLOR_PRESETS[0].accent,
@@ -156,6 +157,16 @@ export default function Home() {
       // LocalStorage fallback
     }
   }, []);
+
+  // Wortzähler & dynamische Folien-Empfehlung
+  const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+  const getRecommendedSlides = () => {
+    if (wordCount === 0) return null;
+    if (wordCount < 150) return { count: 4, text: "Für kurze Notizen empfehlen wir 3-4 Folien." };
+    if (wordCount <= 400) return { count: 6, text: "Optimaler Umfang: Wir empfehlen 5-7 Folien." };
+    return { count: 8, text: "Längerer Quelltext: Wir empfehlen 7-10 Folien." };
+  };
+  const recommendation = getRecommendedSlides();
 
   const isValidHex = (hex: string) => /^#([0-9A-F]{3}){1,2}$/i.test(hex);
 
@@ -195,7 +206,6 @@ export default function Home() {
     });
   };
 
-  // Eigenes Farbtheme dauerhaft sichern
   const handleSaveCurrentTheme = () => {
     const trimmed = newThemeName.trim();
     if (!trimmed) {
@@ -222,7 +232,6 @@ export default function Home() {
     }
   };
 
-  // Gespeichertes Theme löschen
   const handleDeleteTheme = (e: React.MouseEvent, name: string) => {
     e.stopPropagation();
     const updated = savedThemes.filter((t) => t.name !== name);
@@ -234,7 +243,6 @@ export default function Home() {
     }
   };
 
-  // Font-Upload (.ttf, .otf, .woff, .woff2)
   const handleFontUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -264,7 +272,6 @@ export default function Home() {
     reader.readAsDataURL(file);
   };
 
-  // Aktive Font-Family bestimmen
   const getActiveFontFamily = () => {
     if (selectedFont === "custom" && customFontName) {
       return `'${customFontName}', sans-serif`;
@@ -510,6 +517,7 @@ export default function Home() {
 
   const activeFormatObj = AD_FORMATS.find((f) => f.id === selectedFormat) || AD_FORMATS[0];
   const activeFontFamily = getActiveFontFamily();
+  const isStory = selectedFormat === "9_16";
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans flex flex-col">
@@ -559,7 +567,7 @@ export default function Home() {
               Aus langen Inhalten zu viralen Karussells in Sekunden.
             </h2>
             <p className="text-zinc-400 leading-relaxed text-sm">
-              Verwandle Blogartikel, Skripte und Notizen per KI in gestochen scharfe LinkedIn-PDF-Karussells und fertige Begleittexte im eigenen Corporate Design[cite: 1, 2].
+              Verwandle Blogartikel, Skripte und Notizen per KI in gestochen scharfe LinkedIn-PDF-Karussells und fertige Begleittexte im eigenen Corporate Design.
             </p>
             <div className="pt-2">
               <SignUpButton mode="modal">
@@ -571,14 +579,21 @@ export default function Home() {
           </div>
         ) : (
           <div className="space-y-10">
-            {/* OBERER BEREICH: Input & Branding Controls */}
+            {/* OBERER BEREICH: Input & Controls */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              {/* Linke Spalte: Text-Input */}
+              {/* Linke Spalte: Text-Input & Größerer Prompt */}
               <div className="lg:col-span-7 space-y-4">
                 <div className="bg-zinc-900/60 border border-zinc-800 p-6 rounded-3xl space-y-4">
-                  <div className="flex items-center gap-2 text-zinc-200">
-                    <FileText className="w-5 h-5 text-blue-400" />
-                    <h2 className="font-semibold text-sm">Quelltext, Notizen oder Transkript</h2>
+                  <div className="flex items-center justify-between text-zinc-200">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-blue-400" />
+                      <h2 className="font-semibold text-sm">Quelltext, Notizen oder Transkript</h2>
+                    </div>
+                    {wordCount > 0 && (
+                      <span className="text-[11px] font-mono text-zinc-400">
+                        {wordCount} Wörter
+                      </span>
+                    )}
                   </div>
 
                   <textarea
@@ -589,18 +604,26 @@ export default function Home() {
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition resize-none"
                   />
 
-                  {/* Optionaler Prompt */}
+                  {/* Interaktive Folien-Empfehlung */}
+                  {recommendation && (
+                    <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-3.5 py-2 rounded-xl text-xs text-blue-300">
+                      <Info className="w-4 h-4 shrink-0 text-blue-400" />
+                      <span>{recommendation.text}</span>
+                    </div>
+                  )}
+
+                  {/* Vergrößertes Prompt-Eingabefeld (rows=3) */}
                   <div className="space-y-1.5">
                     <label className="text-xs text-zinc-400 flex items-center gap-1.5">
                       <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
-                      Optionale Anweisungen an die KI (z. B. Tonalität, Zielgruppe)[cite: 1, 2]
+                      Detaillierte Anweisungen an die KI (Tonalität, Zielgruppe, Frameworks)
                     </label>
-                    <input
-                      type="text"
+                    <textarea
+                      rows={3}
                       value={customPrompt}
                       onChange={(e) => setCustomPrompt(e.target.value)}
-                      placeholder="Z. B. 'Storytelling-Stil, Fokus auf B2B-Entscheider'"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition"
+                      placeholder="Z. B. 'Storytelling-Stil, Fokus auf B2B-Entscheider, keine Floskeln, Folie 1 mit provokanter Hook...'"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition resize-none"
                     />
                   </div>
 
@@ -640,7 +663,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Rechte Spalte: Format, Farb-Einstellungen, Fonts & Branding-Footer */}
+              {/* Rechte Spalte: Format, Typografie & Farbfelder */}
               <div className="lg:col-span-5 space-y-6">
                 {/* Format-Auswahl */}
                 <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-3xl space-y-3">
@@ -675,7 +698,7 @@ export default function Home() {
                     </div>
                     {selectedFont === "custom" && customFontName && (
                       <span className="text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full font-mono">
-                        Custom Font aktiv
+                        Custom Font
                       </span>
                     )}
                   </div>
@@ -698,11 +721,10 @@ export default function Home() {
                     ))}
                   </div>
 
-                  {/* Font-Upload Input */}
                   <div className="pt-1">
                     <label className="flex items-center justify-center gap-2 w-full p-2.5 rounded-xl border border-dashed border-zinc-700 hover:border-blue-500 bg-zinc-950/40 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer transition">
                       <Upload className="w-3.5 h-3.5 text-blue-400" />
-                      <span>Eigene Schriftart hochladen (.ttf / .woff2)</span>
+                      <span>Eigene Schriftart (.ttf / .woff2)</span>
                       <input
                         type="file"
                         accept=".ttf,.otf,.woff,.woff2"
@@ -713,7 +735,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Farb-Design / Corporate Identity & Brand-Kit */}
+                {/* Farb-Design & Vereinheitlichte Hex-Eingaben */}
                 <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-3xl space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -730,7 +752,6 @@ export default function Home() {
 
                   {!showCustomColors ? (
                     <div className="space-y-3">
-                      {/* Standard Presets */}
                       <div className="grid grid-cols-2 gap-2">
                         {DEFAULT_COLOR_PRESETS.map((p) => (
                           <button
@@ -753,7 +774,6 @@ export default function Home() {
                         ))}
                       </div>
 
-                      {/* Gespeicherte Brand-Kit Themes */}
                       {savedThemes.length > 0 && (
                         <div className="pt-2 border-t border-zinc-800/60 space-y-2">
                           <span className="text-[10px] text-zinc-500 uppercase font-semibold tracking-wider">
@@ -795,6 +815,7 @@ export default function Home() {
                   ) : (
                     <div className="space-y-4 pt-1">
                       <div className="grid grid-cols-2 gap-3">
+                        {/* Hintergrund */}
                         <div>
                           <label className="text-[10px] text-zinc-400 block mb-1">Hintergrund</label>
                           <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
@@ -814,6 +835,7 @@ export default function Home() {
                           </div>
                         </div>
 
+                        {/* Akzentfarbe */}
                         <div>
                           <label className="text-[10px] text-zinc-400 block mb-1">Akzentfarbe</label>
                           <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
@@ -833,6 +855,7 @@ export default function Home() {
                           </div>
                         </div>
 
+                        {/* Überschrift / Text */}
                         <div>
                           <label className="text-[10px] text-zinc-400 block mb-1">Überschrift / Text</label>
                           <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
@@ -852,6 +875,7 @@ export default function Home() {
                           </div>
                         </div>
 
+                        {/* Untertext (Jetzt 100% einheitlich mit Color-Picker & Hex-Input) */}
                         <div>
                           <label className="text-[10px] text-zinc-400 block mb-1">Untertext</label>
                           <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
@@ -872,7 +896,7 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* Theme speichern Formular */}
+                      {/* Theme speichern */}
                       <div className="flex items-center gap-2 pt-1 border-t border-zinc-800">
                         <input
                           type="text"
@@ -893,7 +917,7 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Folien-Optionen & Branding-Footer */}
+                {/* Footer Branding Bar */}
                 <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-3xl space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -937,7 +961,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* UNTERER BEREICH: Live-Editor & Dual-Export Bar */}
+            {/* UNTERER BEREICH: Live-Editor mit dynamischem clamp & 9:16 Spacing */}
             {slides.length > 0 && (
               <div className="space-y-8 pt-4 border-t border-zinc-800 animate-in fade-in duration-300">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-zinc-900/40 p-4 rounded-2xl border border-zinc-800">
@@ -950,9 +974,8 @@ export default function Home() {
                     </p>
                   </div>
 
-                  {/* Buttons: Dateiname, Folie hinzufügen, PDF-Download & PNG-ZIP-Download */}
+                  {/* Export-Buttons */}
                   <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
-                    {/* Dateiname Input */}
                     <div className="flex items-center bg-zinc-950/50 border border-zinc-700/60 rounded-xl px-3 py-2 focus-within:border-blue-500 transition shadow-sm">
                       <input
                         type="text"
@@ -972,7 +995,6 @@ export default function Home() {
                       Folie hinzufügen
                     </button>
 
-                    {/* PNG-Set ZIP Download */}
                     <button
                       onClick={handleExportZIP}
                       disabled={exportingZip || exportingPdf}
@@ -992,7 +1014,6 @@ export default function Home() {
                       )}
                     </button>
 
-                    {/* PDF Download */}
                     <button
                       onClick={handleExportPDF}
                       disabled={exportingPdf || exportingZip}
@@ -1014,7 +1035,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Folien-Vorschau Grid mit dynamischer Font-Familie */}
+                {/* Folien-Vorschau Grid mit dynamischem 9:16 Spacing & clamp-Typografie */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {slides.map((slide, idx) => {
                     const currentLayout: LayoutType = slide.layoutType || (idx === 0 ? "cover" : idx === slides.length - 1 ? "cta" : "statement");
@@ -1027,7 +1048,9 @@ export default function Home() {
                         }}
                         onDragOver={(e) => handleDragOver(e, idx)}
                         onDrop={() => handleDrop(idx)}
-                        className={`relative group rounded-2xl p-6 flex flex-col justify-between shadow-2xl transition border ${
+                        className={`relative group rounded-2xl flex flex-col justify-between shadow-2xl transition border overflow-hidden ${
+                          isStory ? "p-8 space-y-6" : "p-6 space-y-3"
+                        } ${
                           draggedIndex === idx
                             ? "opacity-40 border-dashed border-blue-500 scale-95"
                             : "border-zinc-700/40 hover:border-zinc-500/60"
@@ -1065,8 +1088,8 @@ export default function Home() {
                           </button>
                         </div>
 
-                        {/* Header der Folie: Grip, Tag, Layout-Switcher & Slide-Nummer */}
-                        <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase font-sans">
+                        {/* Header der Folie */}
+                        <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase font-sans shrink-0">
                           <div className="flex items-center gap-2">
                             <div
                               draggable
@@ -1091,7 +1114,7 @@ export default function Home() {
                               />
                             )}
 
-                            {/* Layout-Switcher Dropdown */}
+                            {/* Layout-Switcher */}
                             <div className="no-export flex items-center">
                               <select
                                 value={currentLayout}
@@ -1113,11 +1136,11 @@ export default function Home() {
                           </span>
                         </div>
 
-                        {/* DYNAMISCHER INHALT */}
-                        <div className="my-auto w-full">
+                        {/* DYNAMISCHER INHALT (Mit dynamischem Clamp & automatischem Zeilenumbruch) */}
+                        <div className="my-auto w-full overflow-hidden flex flex-col justify-center">
                           {/* 1. COVER / HOOK LAYOUT */}
                           {currentLayout === "cover" && (
-                            <div className="space-y-4 text-center px-2">
+                            <div className={`text-center px-2 ${isStory ? "space-y-6" : "space-y-4"}`}>
                               <div
                                 className="inline-block px-3 py-1 rounded-full text-[10px] font-semibold tracking-widest uppercase border font-sans"
                                 style={{ borderColor: `${theme.accent}40`, color: theme.accent, backgroundColor: `${theme.accent}15` }}
@@ -1128,8 +1151,10 @@ export default function Home() {
                                 rows={3}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                placeholder="Hook Headline eingeben..."
-                                className="w-full bg-transparent font-extrabold text-xl sm:text-2xl leading-tight text-center focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                placeholder="Hook Headline..."
+                                className={`w-full bg-transparent font-extrabold leading-tight text-center focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
+                                  isStory ? "text-2xl sm:text-3xl" : "text-lg sm:text-xl"
+                                }`}
                                 style={{ color: theme.text }}
                               />
                               <textarea
@@ -1137,7 +1162,9 @@ export default function Home() {
                                 value={slide.content}
                                 onChange={(e) => updateSlideField(idx, "content", e.target.value)}
                                 placeholder="Teaser-Text..."
-                                className="w-full bg-transparent text-xs leading-relaxed text-center focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                className={`w-full bg-transparent leading-relaxed text-center focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
+                                  isStory ? "text-sm sm:text-base" : "text-xs"
+                                }`}
                                 style={{ color: theme.subtext }}
                               />
                             </div>
@@ -1145,17 +1172,19 @@ export default function Home() {
 
                           {/* 2. BULLETS / LIST LAYOUT */}
                           {currentLayout === "bullets" && (
-                            <div className="space-y-3">
+                            <div className={isStory ? "space-y-5" : "space-y-3"}>
                               <textarea
                                 rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
                                 placeholder="Listen-Überschrift..."
-                                className="w-full bg-transparent font-bold text-base leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                className={`w-full bg-transparent font-bold leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
+                                  isStory ? "text-lg sm:text-xl" : "text-sm sm:text-base"
+                                }`}
                                 style={{ color: theme.text }}
                               />
                               <div
-                                className="p-3.5 rounded-xl border border-dashed transition"
+                                className={`rounded-xl border border-dashed transition ${isStory ? "p-5" : "p-3.5"}`}
                                 style={{ borderColor: `${theme.accent}40`, backgroundColor: `${theme.accent}08` }}
                               >
                                 <textarea
@@ -1163,7 +1192,9 @@ export default function Home() {
                                   value={slide.content}
                                   onChange={(e) => updateSlideField(idx, "content", e.target.value)}
                                   placeholder="• Punkt 1&#10;• Punkt 2&#10;• Punkt 3..."
-                                  className="w-full bg-transparent text-xs leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                  className={`w-full bg-transparent leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
+                                    isStory ? "text-sm" : "text-xs"
+                                  }`}
                                   style={{ color: theme.text }}
                                 />
                               </div>
@@ -1172,22 +1203,26 @@ export default function Home() {
 
                           {/* 3. QUOTE / ZITAT LAYOUT */}
                           {currentLayout === "quote" && (
-                            <div className="space-y-2 relative">
+                            <div className={`relative ${isStory ? "space-y-4" : "space-y-2"}`}>
                               <Quote className="w-8 h-8 opacity-20 absolute -top-4 -left-2 select-none" style={{ color: theme.accent }} />
                               <textarea
                                 rows={3}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
                                 placeholder="„Kernaussage oder Zitat...“"
-                                className="w-full bg-transparent italic font-bold text-lg leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                className={`w-full bg-transparent italic font-bold leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
+                                  isStory ? "text-xl sm:text-2xl" : "text-base sm:text-lg"
+                                }`}
                                 style={{ color: theme.text }}
                               />
                               <textarea
                                 rows={2}
                                 value={slide.content}
                                 onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                placeholder="Autor / Kontext des Zitats..."
-                                className="w-full bg-transparent text-xs leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                placeholder="Autor / Kontext..."
+                                className={`w-full bg-transparent leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
+                                  isStory ? "text-sm" : "text-xs"
+                                }`}
                                 style={{ color: theme.accent }}
                               />
                             </div>
@@ -1195,22 +1230,26 @@ export default function Home() {
 
                           {/* 4. CTA / OUTRO LAYOUT */}
                           {currentLayout === "cta" && (
-                            <div className="space-y-3 text-center px-2">
-                              <Megaphone className="w-6 h-6 mx-auto mb-1 opacity-80" style={{ color: theme.accent }} />
+                            <div className={`text-center px-2 ${isStory ? "space-y-5" : "space-y-3"}`}>
+                              <Megaphone className={`mx-auto opacity-80 ${isStory ? "w-8 h-8 mb-2" : "w-6 h-6 mb-1"}`} style={{ color: theme.accent }} />
                               <textarea
                                 rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
                                 placeholder="Call to Action Headline..."
-                                className="w-full bg-transparent font-bold text-base text-center leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                className={`w-full bg-transparent font-bold text-center leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
+                                  isStory ? "text-xl sm:text-2xl" : "text-sm sm:text-base"
+                                }`}
                                 style={{ color: theme.text }}
                               />
                               <textarea
                                 rows={3}
                                 value={slide.content}
                                 onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                placeholder="Was soll der Leser jetzt tun? (Folgen, Kommentieren...)"
-                                className="w-full bg-transparent text-xs text-center leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                placeholder="Handlungsaufforderung..."
+                                className={`w-full bg-transparent text-center leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
+                                  isStory ? "text-sm" : "text-xs"
+                                }`}
                                 style={{ color: theme.subtext }}
                               />
                             </div>
@@ -1218,13 +1257,15 @@ export default function Home() {
 
                           {/* 5. STATEMENT (STANDARD) LAYOUT */}
                           {currentLayout === "statement" && (
-                            <div className="space-y-3">
+                            <div className={isStory ? "space-y-5" : "space-y-3"}>
                               <textarea
                                 rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
                                 placeholder="Überschrift eingeben..."
-                                className="w-full bg-transparent font-bold text-base leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                className={`w-full bg-transparent font-bold leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
+                                  isStory ? "text-lg sm:text-xl" : "text-sm sm:text-base"
+                                }`}
                                 style={{ color: theme.text }}
                               />
                               <textarea
@@ -1232,7 +1273,9 @@ export default function Home() {
                                 value={slide.content}
                                 onChange={(e) => updateSlideField(idx, "content", e.target.value)}
                                 placeholder="Folientext eingeben..."
-                                className="w-full bg-transparent text-xs leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none"
+                                className={`w-full bg-transparent leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
+                                  isStory ? "text-sm" : "text-xs"
+                                }`}
                                 style={{ color: theme.subtext }}
                               />
                             </div>
@@ -1241,7 +1284,7 @@ export default function Home() {
 
                         {/* Footer Branding Bar */}
                         <div
-                          className="pt-3 border-t border-zinc-800/40 flex items-center justify-between text-[10px] font-sans"
+                          className="pt-3 border-t border-zinc-800/40 flex items-center justify-between text-[10px] font-sans shrink-0"
                           style={{ color: theme.subtext }}
                         >
                           <span className="truncate max-w-[140px] font-medium">
@@ -1254,13 +1297,13 @@ export default function Home() {
                   })}
                 </div>
 
-                {/* LinkedIn Begleittext Copy-Box */}
+                {/* Begleittext Box */}
                 {postCopy && (
                   <div className="bg-zinc-900/70 border border-zinc-800 rounded-3xl p-6 space-y-3">
                     <div className="flex justify-between items-center">
                       <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                         <FileText className="w-4 h-4 text-blue-400" />
-                        Social Media Begleittext (Post Copy)[cite: 1, 2]
+                        Social Media Begleittext (Post Copy)
                       </h3>
                       <button
                         onClick={copyToClipboard}
