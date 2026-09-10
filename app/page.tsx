@@ -26,6 +26,8 @@ import {
   Upload,
   BookmarkPlus,
   Info,
+  ImageIcon,
+  X,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import jsPDF from "jspdf";
@@ -89,6 +91,7 @@ interface Slide {
   layoutType?: LayoutType;
   headline: string;
   content: string;
+  imageUrl?: string;
 }
 
 interface CustomTheme {
@@ -112,6 +115,9 @@ export default function Home() {
   const [theme, setTheme] = useState<CustomTheme>(DEFAULT_COLOR_PRESETS[0]);
   const [showCustomColors, setShowCustomColors] = useState(false);
 
+  // Tab-Wechsel für Einstellungen in der linken Spalte
+  const [activeConfigTab, setActiveConfigTab] = useState<"text" | "design" | "brand">("text");
+
   // Brand-Kit: Gespeicherte Themes
   const [savedThemes, setSavedThemes] = useState<CustomTheme[]>([]);
   const [newThemeName, setNewThemeName] = useState("");
@@ -128,7 +134,7 @@ export default function Home() {
   const [authorName, setAuthorName] = useState("CropAd Creator");
   const [authorHandle, setAuthorHandle] = useState("@cropad");
 
-  // Hexcode-Inputs (inkl. Untertext)
+  // Hexcode-Inputs
   const [hexInputs, setHexInputs] = useState({
     bg: DEFAULT_COLOR_PRESETS[0].bg,
     accent: DEFAULT_COLOR_PRESETS[0].accent,
@@ -146,7 +152,6 @@ export default function Home() {
 
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Themes aus LocalStorage laden
   useEffect(() => {
     try {
       const stored = localStorage.getItem("cropad_custom_themes");
@@ -158,13 +163,12 @@ export default function Home() {
     }
   }, []);
 
-  // Wortzähler & dynamische Folien-Empfehlung
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
   const getRecommendedSlides = () => {
     if (wordCount === 0) return null;
-    if (wordCount < 150) return { count: 4, text: "Für kurze Notizen empfehlen wir 3-4 Folien." };
-    if (wordCount <= 400) return { count: 6, text: "Optimaler Umfang: Wir empfehlen 5-7 Folien." };
-    return { count: 8, text: "Längerer Quelltext: Wir empfehlen 7-10 Folien." };
+    if (wordCount < 150) return { count: 4, text: "Empfehlung: 3-4 Folien." };
+    if (wordCount <= 400) return { count: 6, text: "Empfehlung: 5-7 Folien." };
+    return { count: 8, text: "Empfehlung: 7-10 Folien." };
   };
   const recommendation = getRecommendedSlides();
 
@@ -270,6 +274,32 @@ export default function Home() {
     };
 
     reader.readAsDataURL(file);
+  };
+
+  // Bild-Upload pro Slide (FileReader -> Base64)
+  const handleSlideImageUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result) {
+        setSlides((prev) => {
+          const updated = [...prev];
+          updated[index] = { ...updated[index], imageUrl: reader.result as string };
+          return updated;
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeSlideImage = (index: number) => {
+    setSlides((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], imageUrl: undefined };
+      return updated;
+    });
   };
 
   const getActiveFontFamily = () => {
@@ -508,9 +538,9 @@ export default function Home() {
 
   if (!isLoaded) {
     return (
-      <main className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-400 font-sans">
+      <main className="h-full bg-zinc-950 flex items-center justify-center text-zinc-400 font-sans">
         <RefreshCw className="animate-spin w-6 h-6 text-blue-500 mr-2" />
-        Lädt CropAd Workspace...
+        Lädt CropAd Studio...
       </main>
     );
   }
@@ -520,289 +550,241 @@ export default function Home() {
   const isStory = selectedFormat === "9_16";
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans flex flex-col">
-      {/* Header */}
-      <header className="border-b border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md sticky top-0 z-50 px-6 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Sparkles className="w-5 h-5 text-white" />
+    <div className="h-full flex flex-col bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
+      {!isSignedIn ? (
+        <div className="m-auto text-center max-w-xl p-8 space-y-6">
+          <div className="inline-flex p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 mb-2">
+            <Layers className="w-8 h-8" />
           </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-white leading-tight">CropAd</h1>
-            <p className="text-[11px] text-zinc-400">Content Repurposing & Carousels</p>
+          <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-white">
+            Aus langen Inhalten zu viralen Karussells in Sekunden.
+          </h2>
+          <p className="text-zinc-400 leading-relaxed text-sm">
+            Verwandle Notizen und Blogartikel per KI in fertige LinkedIn-PDF-Karussells und Begleittexte im eigenen Corporate Design.
+          </p>
+          <div className="pt-2">
+            <SignUpButton mode="modal">
+              <button className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-3 rounded-xl shadow-lg shadow-blue-600/25 transition-all">
+                Jetzt kostenlos starten
+              </button>
+            </SignUpButton>
           </div>
         </div>
-
-        <div>
-          {!isSignedIn ? (
-            <div className="flex items-center gap-3">
-              <SignInButton mode="modal">
-                <button className="text-sm font-medium text-zinc-300 hover:text-white px-3 py-1.5 transition">
-                  Anmelden
+      ) : (
+        /* SIDE-BY-SIDE HAUPTCONTAINER */
+        <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden">
+          
+          {/* LINKE SPALTE: Input, Prompt, Format & Branding (Scrollt separat) */}
+          <div className="w-full lg:w-[460px] h-full overflow-y-auto border-r border-zinc-800/80 bg-zinc-950/70 p-6 flex flex-col space-y-5 shrink-0">
+            
+            {/* Header / Tabs */}
+            <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+              <div className="flex items-center gap-1 bg-zinc-900/80 p-1 rounded-xl border border-zinc-800">
+                <button
+                  onClick={() => setActiveConfigTab("text")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    activeConfigTab === "text"
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  Inhalt & KI
                 </button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <button className="text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg transition shadow-md shadow-blue-600/20">
-                  Registrieren
+                <button
+                  onClick={() => setActiveConfigTab("design")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    activeConfigTab === "design"
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  Design & CI
                 </button>
-              </SignUpButton>
-            </div>
-          ) : (
-            <div className="flex items-center gap-4">
-              <span className="text-xs text-zinc-400 hidden sm:inline-block">Repurpose Studio</span>
-              <UserButton />
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Main Container */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-6 md:p-10 flex flex-col">
-        {!isSignedIn ? (
-          <div className="my-auto text-center max-w-xl mx-auto space-y-6">
-            <div className="inline-flex p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 mb-2">
-              <Layers className="w-8 h-8" />
-            </div>
-            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-white">
-              Aus langen Inhalten zu viralen Karussells in Sekunden.
-            </h2>
-            <p className="text-zinc-400 leading-relaxed text-sm">
-              Verwandle Blogartikel, Skripte und Notizen per KI in gestochen scharfe LinkedIn-PDF-Karussells und fertige Begleittexte im eigenen Corporate Design.
-            </p>
-            <div className="pt-2">
-              <SignUpButton mode="modal">
-                <button className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-3 rounded-xl shadow-lg shadow-blue-600/25 transition-all">
-                  Jetzt kostenlos starten
+                <button
+                  onClick={() => setActiveConfigTab("brand")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    activeConfigTab === "brand"
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  Branding
                 </button>
-              </SignUpButton>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-10">
-            {/* OBERER BEREICH: Input & Controls */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              {/* Linke Spalte: Text-Input & Größerer Prompt */}
-              <div className="lg:col-span-7 space-y-4">
-                <div className="bg-zinc-900/60 border border-zinc-800 p-6 rounded-3xl space-y-4">
-                  <div className="flex items-center justify-between text-zinc-200">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-blue-400" />
-                      <h2 className="font-semibold text-sm">Quelltext, Notizen oder Transkript</h2>
-                    </div>
-                    {wordCount > 0 && (
-                      <span className="text-[11px] font-mono text-zinc-400">
-                        {wordCount} Wörter
-                      </span>
-                    )}
-                  </div>
+              </div>
 
+              <span className="text-[11px] font-mono text-zinc-400">
+                {wordCount} Wörter
+              </span>
+            </div>
+
+            {/* TAB 1: INHALT & PROMPT */}
+            {activeConfigTab === "text" && (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-blue-400" />
+                    Quelltext oder Notizen
+                  </label>
                   <textarea
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     placeholder="Füge hier deinen Text, Notizen, Blogbeitrag oder Kernaussagen ein..."
                     rows={6}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition resize-none"
+                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl p-3.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition resize-none"
                   />
-
-                  {/* Interaktive Folien-Empfehlung */}
-                  {recommendation && (
-                    <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-3.5 py-2 rounded-xl text-xs text-blue-300">
-                      <Info className="w-4 h-4 shrink-0 text-blue-400" />
-                      <span>{recommendation.text}</span>
-                    </div>
-                  )}
-
-                  {/* Vergrößertes Prompt-Eingabefeld (rows=3) */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs text-zinc-400 flex items-center gap-1.5">
-                      <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
-                      Detaillierte Anweisungen an die KI (Tonalität, Zielgruppe, Frameworks)
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={customPrompt}
-                      onChange={(e) => setCustomPrompt(e.target.value)}
-                      placeholder="Z. B. 'Storytelling-Stil, Fokus auf B2B-Entscheider, keine Floskeln, Folie 1 mit provokanter Hook...'"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition resize-none"
-                    />
-                  </div>
-
-                  {/* Slider: Folienanzahl */}
-                  <div className="flex items-center justify-between pt-2">
-                    <span className="text-xs text-zinc-400">
-                      Anzahl Folien: <strong className="text-white">{numSlides}</strong>
-                    </span>
-                    <input
-                      type="range"
-                      min={1}
-                      max={10}
-                      value={numSlides}
-                      onChange={(e) => setNumSlides(Number(e.target.value))}
-                      className="w-32 accent-blue-600 cursor-pointer"
-                    />
-                  </div>
-
-                  {/* Generieren Button */}
-                  <button
-                    onClick={handleGenerate}
-                    disabled={loading || !content.trim()}
-                    className="w-full mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition shadow-lg shadow-blue-600/20"
-                  >
-                    {loading ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        KI analysiert und strukturiert Folien...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" />
-                        Karussell & Text generieren
-                      </>
-                    )}
-                  </button>
                 </div>
-              </div>
 
-              {/* Rechte Spalte: Format, Typografie & Farbfelder */}
-              <div className="lg:col-span-5 space-y-6">
+                {recommendation && (
+                  <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-3 py-2 rounded-xl text-[11px] text-blue-300">
+                    <Info className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+                    <span>{recommendation.text}</span>
+                  </div>
+                )}
+
+                {/* KI-Anweisungen */}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-zinc-400 flex items-center gap-1.5">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
+                    Zusätzliche KI-Anweisungen
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={customPrompt}
+                    onChange={(e) => setCustomPrompt(e.target.value)}
+                    placeholder="Z. B. 'Storytelling-Stil, Fokus auf B2B-Entscheider, Hook auf Folie 1...'"
+                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl p-2.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition resize-none"
+                  />
+                </div>
+
+                {/* Folienanzahl Slider */}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/40 border border-zinc-800/60">
+                  <span className="text-xs text-zinc-300">
+                    Folien: <strong className="text-white font-mono">{numSlides}</strong>
+                  </span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    value={numSlides}
+                    onChange={(e) => setNumSlides(Number(e.target.value))}
+                    className="w-32 accent-blue-600 cursor-pointer"
+                  />
+                </div>
+
                 {/* Format-Auswahl */}
-                <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-3xl space-y-3">
-                  <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Ziel-Format</h3>
-                  <div className="grid grid-cols-1 gap-2">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Ziel-Format</label>
+                  <div className="grid grid-cols-3 gap-2">
                     {AD_FORMATS.map((fmt) => (
                       <button
                         key={fmt.id}
                         onClick={() => setSelectedFormat(fmt.id)}
-                        className={`p-3 rounded-xl text-left border flex items-center justify-between transition ${
+                        className={`p-2 rounded-xl text-center border transition ${
                           selectedFormat === fmt.id
                             ? "border-blue-500 bg-blue-500/10 text-white"
-                            : "border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:border-zinc-700"
+                            : "border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:border-zinc-700"
                         }`}
                       >
-                        <div>
-                          <p className="text-xs font-medium text-white">{fmt.name}</p>
-                          <p className="text-[11px] text-zinc-500">{fmt.desc}</p>
-                        </div>
-                        {selectedFormat === fmt.id && <ChevronRight className="w-4 h-4 text-blue-400" />}
+                        <p className="text-[11px] font-medium truncate">{fmt.name.split(" ")[0]}</p>
+                        <p className="text-[10px] text-zinc-400">{fmt.id.replace("_", ":")}</p>
                       </button>
                     ))}
                   </div>
                 </div>
+              </div>
+            )}
 
-                {/* Typografie & Custom Fonts */}
-                <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-3xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Type className="w-4 h-4 text-blue-400" />
-                      <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Typografie & Fonts</h3>
-                    </div>
-                    {selectedFont === "custom" && customFontName && (
-                      <span className="text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full font-mono">
-                        Custom Font
-                      </span>
-                    )}
-                  </div>
-
+            {/* TAB 2: DESIGN & SCHRIFTEN */}
+            {activeConfigTab === "design" && (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                {/* Typografie */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Type className="w-3.5 h-3.5 text-blue-400" />
+                    Typografie
+                  </label>
                   <div className="grid grid-cols-2 gap-2">
                     {FONT_PRESETS.map((f) => (
                       <button
                         key={f.id}
                         onClick={() => setSelectedFont(f.id)}
-                        className={`p-2.5 rounded-xl border text-left transition flex items-center justify-between ${
+                        className={`p-2 rounded-xl border text-left text-xs transition ${
                           selectedFont === f.id
                             ? "border-blue-500 bg-blue-500/10 text-white"
-                            : "border-zinc-800 bg-zinc-950/50 hover:border-zinc-700 text-zinc-400"
+                            : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 text-zinc-400"
                         }`}
+                        style={{ fontFamily: f.fontFamily }}
                       >
-                        <span className="text-xs font-medium" style={{ fontFamily: f.fontFamily }}>
-                          {f.name}
-                        </span>
+                        {f.name}
                       </button>
                     ))}
                   </div>
 
-                  <div className="pt-1">
-                    <label className="flex items-center justify-center gap-2 w-full p-2.5 rounded-xl border border-dashed border-zinc-700 hover:border-blue-500 bg-zinc-950/40 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer transition">
-                      <Upload className="w-3.5 h-3.5 text-blue-400" />
-                      <span>Eigene Schriftart (.ttf / .woff2)</span>
-                      <input
-                        type="file"
-                        accept=".ttf,.otf,.woff,.woff2"
-                        onChange={handleFontUpload}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
+                  <label className="flex items-center justify-center gap-2 w-full p-2 rounded-xl border border-dashed border-zinc-700 hover:border-blue-500 bg-zinc-900/30 text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer transition">
+                    <Upload className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Eigene Schriftart (.ttf / .woff2)</span>
+                    <input
+                      type="file"
+                      accept=".ttf,.otf,.woff,.woff2"
+                      onChange={handleFontUpload}
+                      className="hidden"
+                    />
+                  </label>
                 </div>
 
-                {/* Farb-Design & Vereinheitlichte Hex-Eingaben */}
-                <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-3xl space-y-4">
+                {/* Farben & Presets */}
+                <div className="space-y-3 pt-2 border-t border-zinc-800/60">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Palette className="w-4 h-4 text-blue-400" />
-                      <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Design & Branding</h3>
-                    </div>
+                    <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Palette className="w-3.5 h-3.5 text-blue-400" />
+                      Farb-Design
+                    </label>
                     <button
                       onClick={() => setShowCustomColors(!showCustomColors)}
                       className="text-[11px] text-blue-400 hover:underline"
                     >
-                      {showCustomColors ? "Presets wählen" : "Custom Hex-Codes"}
+                      {showCustomColors ? "Presets wählen" : "Custom Hex"}
                     </button>
                   </div>
 
                   {!showCustomColors ? (
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       <div className="grid grid-cols-2 gap-2">
                         {DEFAULT_COLOR_PRESETS.map((p) => (
                           <button
                             key={p.name}
                             onClick={() => handleSelectPreset(p)}
-                            className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2.5 ${
+                            className={`p-2 rounded-xl border text-left transition flex items-center gap-2 ${
                               theme.name === p.name
                                 ? "border-blue-500 bg-zinc-800/80"
-                                : "border-zinc-800 bg-zinc-950/50 hover:border-zinc-700"
+                                : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
                             }`}
                           >
                             <div
-                              className="w-6 h-6 rounded-lg border border-zinc-700 flex items-center justify-center overflow-hidden"
+                              className="w-5 h-5 rounded-lg border border-zinc-700 flex items-center justify-center shrink-0"
                               style={{ background: p.bg }}
                             >
-                              <div className="w-2.5 h-2.5 rounded-full" style={{ background: p.accent }} />
+                              <div className="w-2 h-2 rounded-full" style={{ background: p.accent }} />
                             </div>
-                            <span className="text-xs font-medium text-zinc-200">{p.name}</span>
+                            <span className="text-xs font-medium text-zinc-200 truncate">{p.name}</span>
                           </button>
                         ))}
                       </div>
 
                       {savedThemes.length > 0 && (
-                        <div className="pt-2 border-t border-zinc-800/60 space-y-2">
-                          <span className="text-[10px] text-zinc-500 uppercase font-semibold tracking-wider">
-                            Gespeicherte Brand-Kits
-                          </span>
+                        <div className="pt-2 space-y-1.5">
+                          <span className="text-[10px] text-zinc-400 uppercase font-semibold">Gespeicherte Themes</span>
                           <div className="grid grid-cols-2 gap-2">
                             {savedThemes.map((p) => (
                               <div
                                 key={p.name}
                                 onClick={() => handleSelectPreset(p)}
-                                className={`p-2.5 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
-                                  theme.name === p.name
-                                    ? "border-blue-500 bg-zinc-800/80"
-                                    : "border-zinc-800 bg-zinc-950/50 hover:border-zinc-700"
-                                }`}
+                                className="p-2 rounded-xl border border-zinc-800 bg-zinc-900/50 flex items-center justify-between cursor-pointer hover:border-zinc-700"
                               >
-                                <div className="flex items-center gap-2 truncate">
-                                  <div
-                                    className="w-5 h-5 rounded-lg border border-zinc-700 flex items-center justify-center shrink-0"
-                                    style={{ background: p.bg }}
-                                  >
-                                    <div className="w-2 h-2 rounded-full" style={{ background: p.accent }} />
-                                  </div>
-                                  <span className="text-xs font-medium text-zinc-200 truncate">{p.name}</span>
-                                </div>
+                                <span className="text-xs text-zinc-200 truncate">{p.name}</span>
                                 <button
                                   onClick={(e) => handleDeleteTheme(e, p.name)}
-                                  className="p-1 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-zinc-800 transition"
-                                  title="Brand-Kit löschen"
+                                  className="p-1 text-zinc-400 hover:text-red-400"
                                 >
                                   <Trash2 className="w-3 h-3" />
                                 </button>
@@ -813,230 +795,228 @@ export default function Home() {
                       )}
                     </div>
                   ) : (
-                    <div className="space-y-4 pt-1">
-                      <div className="grid grid-cols-2 gap-3">
-                        {/* Hintergrund */}
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="text-[10px] text-zinc-400 block mb-1">Hintergrund</label>
-                          <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
+                          <div className="flex items-center gap-1.5 bg-zinc-900 p-1.5 rounded-lg border border-zinc-800">
                             <input
                               type="color"
                               value={isValidHex(hexInputs.bg) ? hexInputs.bg : "#000000"}
                               onChange={(e) => handleColorPickerChange("bg", e.target.value)}
-                              className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                              className="w-4 h-4 rounded cursor-pointer bg-transparent border-0"
                             />
                             <input
                               type="text"
                               value={hexInputs.bg}
                               onChange={(e) => handleHexChange("bg", e.target.value)}
-                              className="w-full bg-transparent text-xs font-mono text-zinc-200 focus:outline-none"
-                              placeholder="#09090b"
+                              className="w-full bg-transparent text-[11px] font-mono text-zinc-200 focus:outline-none"
                             />
                           </div>
                         </div>
 
-                        {/* Akzentfarbe */}
                         <div>
-                          <label className="text-[10px] text-zinc-400 block mb-1">Akzentfarbe</label>
-                          <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
+                          <label className="text-[10px] text-zinc-400 block mb-1">Akzent</label>
+                          <div className="flex items-center gap-1.5 bg-zinc-900 p-1.5 rounded-lg border border-zinc-800">
                             <input
                               type="color"
                               value={isValidHex(hexInputs.accent) ? hexInputs.accent : "#3b82f6"}
                               onChange={(e) => handleColorPickerChange("accent", e.target.value)}
-                              className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                              className="w-4 h-4 rounded cursor-pointer bg-transparent border-0"
                             />
                             <input
                               type="text"
                               value={hexInputs.accent}
                               onChange={(e) => handleHexChange("accent", e.target.value)}
-                              className="w-full bg-transparent text-xs font-mono text-zinc-200 focus:outline-none"
-                              placeholder="#3b82f6"
+                              className="w-full bg-transparent text-[11px] font-mono text-zinc-200 focus:outline-none"
                             />
                           </div>
                         </div>
 
-                        {/* Überschrift / Text */}
                         <div>
-                          <label className="text-[10px] text-zinc-400 block mb-1">Überschrift / Text</label>
-                          <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
+                          <label className="text-[10px] text-zinc-400 block mb-1">Überschrift</label>
+                          <div className="flex items-center gap-1.5 bg-zinc-900 p-1.5 rounded-lg border border-zinc-800">
                             <input
                               type="color"
                               value={isValidHex(hexInputs.text) ? hexInputs.text : "#ffffff"}
                               onChange={(e) => handleColorPickerChange("text", e.target.value)}
-                              className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                              className="w-4 h-4 rounded cursor-pointer bg-transparent border-0"
                             />
                             <input
                               type="text"
                               value={hexInputs.text}
                               onChange={(e) => handleHexChange("text", e.target.value)}
-                              className="w-full bg-transparent text-xs font-mono text-zinc-200 focus:outline-none"
-                              placeholder="#fafafa"
+                              className="w-full bg-transparent text-[11px] font-mono text-zinc-200 focus:outline-none"
                             />
                           </div>
                         </div>
 
-                        {/* Untertext */}
                         <div>
                           <label className="text-[10px] text-zinc-400 block mb-1">Untertext</label>
-                          <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
+                          <div className="flex items-center gap-1.5 bg-zinc-900 p-1.5 rounded-lg border border-zinc-800">
                             <input
                               type="color"
                               value={isValidHex(hexInputs.subtext) ? hexInputs.subtext : "#888888"}
                               onChange={(e) => handleColorPickerChange("subtext", e.target.value)}
-                              className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                              className="w-4 h-4 rounded cursor-pointer bg-transparent border-0"
                             />
                             <input
                               type="text"
                               value={hexInputs.subtext}
                               onChange={(e) => handleHexChange("subtext", e.target.value)}
-                              className="w-full bg-transparent text-xs font-mono text-zinc-200 focus:outline-none"
-                              placeholder="#a1a1aa"
+                              className="w-full bg-transparent text-[11px] font-mono text-zinc-200 focus:outline-none"
                             />
                           </div>
                         </div>
                       </div>
 
-                      {/* Theme speichern */}
                       <div className="flex items-center gap-2 pt-1 border-t border-zinc-800">
                         <input
                           type="text"
                           value={newThemeName}
                           onChange={(e) => setNewThemeName(e.target.value)}
-                          placeholder="Brand-Kit Name..."
-                          className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-blue-500 flex-1"
+                          placeholder="Theme Name..."
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 focus:outline-none flex-1"
                         />
                         <button
                           onClick={handleSaveCurrentTheme}
-                          className="bg-zinc-800 hover:bg-zinc-700 text-xs text-white px-3 py-1.5 rounded-lg flex items-center gap-1 transition shrink-0"
+                          className="bg-zinc-800 hover:bg-zinc-700 text-xs text-white px-2.5 py-1 rounded-lg flex items-center gap-1 transition shrink-0"
                         >
                           <BookmarkPlus className="w-3.5 h-3.5 text-blue-400" />
-                          Speichern
+                          Sichern
                         </button>
                       </div>
                     </div>
                   )}
                 </div>
+              </div>
+            )}
 
-                {/* Footer Branding Bar */}
-                <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-3xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
-                      <User className="w-3.5 h-3.5 text-blue-400" />
-                      Branding & Footer
-                    </h3>
-                    <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-400">
-                      <input
-                        type="checkbox"
-                        checked={showTags}
-                        onChange={(e) => setShowTags(e.target.checked)}
-                        className="rounded accent-blue-600 cursor-pointer"
-                      />
-                      Tags anzeigen
-                    </label>
+            {/* TAB 3: BRANDING */}
+            {activeConfigTab === "brand" && (
+              <div className="space-y-3 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-blue-400" />
+                    Footer-Branding
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-xs text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={showTags}
+                      onChange={(e) => setShowTags(e.target.checked)}
+                      className="rounded accent-blue-600"
+                    />
+                    Tags aktiv
+                  </label>
+                </div>
+
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-[10px] text-zinc-400 block mb-1">Name / Brand</label>
+                    <input
+                      type="text"
+                      value={authorName}
+                      onChange={(e) => setAuthorName(e.target.value)}
+                      placeholder="CropAd Creator"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                    />
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <div>
-                      <label className="text-[10px] text-zinc-400 block mb-1">Name / Brand</label>
-                      <input
-                        type="text"
-                        value={authorName}
-                        onChange={(e) => setAuthorName(e.target.value)}
-                        placeholder="CropAd Creator"
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-zinc-400 block mb-1">Social Handle</label>
-                      <input
-                        type="text"
-                        value={authorHandle}
-                        onChange={(e) => setAuthorHandle(e.target.value)}
-                        placeholder="@cropad"
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
+                  <div>
+                    <label className="text-[10px] text-zinc-400 block mb-1">Social Handle</label>
+                    <input
+                      type="text"
+                      value={authorHandle}
+                      onChange={(e) => setAuthorHandle(e.target.value)}
+                      placeholder="@cropad"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                    />
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Generieren Button (immer sichtbar in der linken Spalte) */}
+            <div className="mt-auto pt-4 border-t border-zinc-800/80">
+              <button
+                onClick={handleGenerate}
+                disabled={loading || !content.trim()}
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition shadow-lg shadow-blue-600/20 text-xs"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    KI analysiert & generiert...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    Folien & Post generieren
+                  </>
+                )}
+              </button>
             </div>
+          </div>
 
-            {/* UNTERER BEREICH: Live-Editor */}
-            {slides.length > 0 && (
-              <div className="space-y-8 pt-4 border-t border-zinc-800 animate-in fade-in duration-300">
-                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-zinc-900/40 p-4 rounded-2xl border border-zinc-800">
-                  <div>
-                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                      <span>Interaktiver Folien-Editor ({slides.length})</span>
-                    </h2>
-                    <p className="text-xs text-zinc-400">
-                      Folien greifen & verschieben, Layouts anpassen und mit eigener CI exportieren.
-                    </p>
-                  </div>
-
-                  {/* Export-Buttons */}
-                  <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
-                    <div className="flex items-center bg-zinc-950/50 border border-zinc-700/60 rounded-xl px-3 py-2 focus-within:border-blue-500 transition shadow-sm">
+          {/* RECHTE SPALTE: Live-Folien-Editor & Export (Scrollt separat) */}
+          <div className="flex-1 h-full overflow-y-auto p-6 space-y-6 bg-zinc-950">
+            {slides.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 border border-dashed border-zinc-800 rounded-3xl space-y-3 text-zinc-500">
+                <Layers className="w-10 h-10 stroke-1 text-zinc-600" />
+                <h3 className="text-sm font-semibold text-zinc-400">Kein Karussell aktiv</h3>
+                <p className="text-xs max-w-sm">
+                  Füge links deinen Text ein und klicke auf „Generieren“, um deine Folien hier interaktiv zu bearbeiten und zu exportieren.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Export & Werkzeug-Leiste */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-zinc-900/50 p-3 rounded-2xl border border-zinc-800">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white pl-1">
+                      Editor ({slides.length})
+                    </span>
+                    <div className="flex items-center bg-zinc-950 border border-zinc-700/60 rounded-xl px-2.5 py-1.5 focus-within:border-blue-500 transition">
                       <input
                         type="text"
                         value={projectName}
                         onChange={(e) => setProjectName(e.target.value)}
                         placeholder="Projektname..."
-                        className="bg-transparent text-xs font-medium text-zinc-200 focus:outline-none w-28 sm:w-36 placeholder-zinc-500"
+                        className="bg-transparent text-xs text-zinc-200 focus:outline-none w-28 sm:w-36"
                       />
-                      <span className="text-[10px] text-zinc-500 font-mono ml-1 select-none">.pdf/.zip</span>
+                      <span className="text-[10px] text-zinc-400 font-mono ml-1">.pdf/.zip</span>
                     </div>
+                  </div>
 
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={addSlide}
-                      className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs text-white px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition shadow-sm"
+                      className="bg-zinc-800 hover:bg-zinc-700 text-xs text-white px-3 py-2 rounded-xl flex items-center gap-1.5 transition"
                     >
-                      <Plus className="w-4 h-4 text-blue-400" />
-                      Folie hinzufügen
+                      <Plus className="w-3.5 h-3.5 text-blue-400" />
+                      Folie
                     </button>
-
                     <button
                       onClick={handleExportZIP}
                       disabled={exportingZip || exportingPdf}
-                      className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-medium px-4 py-2.5 rounded-xl flex items-center gap-2 transition border border-zinc-700 shadow-sm"
-                      title="Alle Folien als durchnummerierte PNG-Bilder im ZIP-Paket herunterladen"
+                      className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition border border-zinc-700"
                     >
-                      {exportingZip ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Erstelle ZIP...
-                        </>
-                      ) : (
-                        <>
-                          <Archive className="w-4 h-4 text-zinc-300" />
-                          PNG-Set (ZIP)
-                        </>
-                      )}
+                      {exportingZip ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Archive className="w-3.5 h-3.5 text-zinc-300" />}
+                      PNG-ZIP
                     </button>
-
                     <button
                       onClick={handleExportPDF}
                       disabled={exportingPdf || exportingZip}
-                      className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 transition shadow-lg shadow-blue-600/25"
-                      title="Als mehrseitiges PDF für LinkedIn herunterladen"
+                      className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 text-white text-xs font-medium px-4 py-2 rounded-xl flex items-center gap-1.5 transition shadow-md shadow-blue-600/20"
                     >
-                      {exportingPdf ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Erstelle PDF...
-                        </>
-                      ) : (
-                        <>
-                          <Download className="w-4 h-4" />
-                          PDF Karussell
-                        </>
-                      )}
+                      {exportingPdf ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                      PDF Karussell
                     </button>
                   </div>
                 </div>
 
-                {/* Folien-Vorschau Grid (Hauptkarte ohne overflow-hidden, damit Buttons nicht beschnitten werden) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* Folien-Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {slides.map((slide, idx) => {
                     const currentLayout: LayoutType = slide.layoutType || (idx === 0 ? "cover" : idx === slides.length - 1 ? "cta" : "statement");
 
@@ -1049,7 +1029,7 @@ export default function Home() {
                         onDragOver={(e) => handleDragOver(e, idx)}
                         onDrop={() => handleDrop(idx)}
                         className={`relative group rounded-2xl flex flex-col justify-between shadow-2xl transition border ${
-                          isStory ? "p-8 space-y-6" : "p-6 space-y-3"
+                          isStory ? "p-8 space-y-6" : "p-5 space-y-3"
                         } ${
                           draggedIndex === idx
                             ? "opacity-40 border-dashed border-blue-500 scale-95"
@@ -1061,13 +1041,13 @@ export default function Home() {
                           fontFamily: activeFontFamily,
                         }}
                       >
-                        {/* Entkoppelte Hover-Aktionsleiste: Sichtbar oben rechts platziert */}
+                        {/* Hover-Aktionsleiste */}
                         <div className="no-export absolute -top-3.5 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-30">
                           <button
                             onClick={() => moveSlide(idx, "left")}
                             disabled={idx === 0}
                             title="Nach links verschieben"
-                            className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300 transition"
+                            className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300"
                           >
                             <ArrowLeft className="w-3.5 h-3.5" />
                           </button>
@@ -1075,29 +1055,28 @@ export default function Home() {
                             onClick={() => moveSlide(idx, "right")}
                             disabled={idx === slides.length - 1}
                             title="Nach rechts verschieben"
-                            className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300 transition"
+                            className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300"
                           >
                             <ArrowRight className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => deleteSlide(idx)}
                             title="Folie löschen"
-                            className="p-1 rounded-lg hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition"
+                            className="p-1 rounded-lg hover:bg-red-500/20 text-zinc-400 hover:text-red-400"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
-                        {/* Header der Folie */}
+                        {/* Slide-Header */}
                         <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase font-sans shrink-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <div
                               draggable
                               onDragStart={() => handleDragStart(idx)}
-                              title="Ziehen, um Folie zu verschieben"
-                              className="no-export cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-zinc-800/60 text-zinc-400 hover:text-zinc-100 transition"
+                              className="no-export cursor-grab active:cursor-grabbing p-1 text-zinc-400 hover:text-zinc-100"
                             >
-                              <GripVertical className="w-4 h-4" />
+                              <GripVertical className="w-3.5 h-3.5" />
                             </div>
 
                             {showTags && (
@@ -1105,8 +1084,7 @@ export default function Home() {
                                 type="text"
                                 value={slide.tag || ""}
                                 onChange={(e) => updateSlideField(idx, "tag", e.target.value)}
-                                placeholder="TAG"
-                                className="px-2 py-0.5 rounded font-mono text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 w-20 bg-transparent"
+                                className="px-1.5 py-0.5 rounded font-mono text-[9px] focus:outline-none w-16 bg-transparent"
                                 style={{
                                   backgroundColor: `${theme.accent}20`,
                                   color: theme.accent,
@@ -1115,20 +1093,31 @@ export default function Home() {
                             )}
 
                             {/* Layout-Switcher */}
-                            <div className="no-export flex items-center">
-                              <select
-                                value={currentLayout}
-                                onChange={(e) => updateSlideField(idx, "layoutType", e.target.value)}
-                                className="bg-zinc-900 border border-zinc-700/80 rounded-lg px-1.5 py-0.5 text-[10px] text-zinc-300 focus:outline-none focus:border-blue-500 cursor-pointer font-sans"
-                                title="Layout dieser Folie ändern"
-                              >
-                                <option value="cover">📐 Cover / Hook</option>
-                                <option value="statement">📐 Statement</option>
-                                <option value="bullets">📐 Liste / Steps</option>
-                                <option value="quote">📐 Zitat</option>
-                                <option value="cta">📐 Call to Action</option>
-                              </select>
-                            </div>
+                            <select
+                              value={currentLayout}
+                              onChange={(e) => updateSlideField(idx, "layoutType", e.target.value)}
+                              className="no-export bg-zinc-900 border border-zinc-700/80 rounded px-1.5 py-0.5 text-[10px] text-zinc-300 focus:outline-none cursor-pointer"
+                            >
+                              <option value="cover">Cover</option>
+                              <option value="statement">Statement</option>
+                              <option value="bullets">Liste</option>
+                              <option value="quote">Zitat</option>
+                              <option value="cta">CTA</option>
+                            </select>
+
+                            {/* Bild Upload Button (no-export) */}
+                            <label
+                              title="Bild/Logo auf Folie einbinden"
+                              className="no-export p-1 rounded hover:bg-zinc-800/80 text-zinc-400 hover:text-blue-400 cursor-pointer transition"
+                            >
+                              <ImageIcon className="w-3.5 h-3.5" />
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleSlideImageUpload(idx, e)}
+                                className="hidden"
+                              />
+                            </label>
                           </div>
 
                           <span className="font-mono text-xs select-none" style={{ color: theme.subtext }}>
@@ -1136,158 +1125,151 @@ export default function Home() {
                           </span>
                         </div>
 
-                        {/* DYNAMISCHER INHALT (Textbereich mit overflow-hidden geschützt) */}
-                        <div className="my-auto w-full overflow-hidden flex flex-col justify-center">
-                          {/* 1. COVER / HOOK LAYOUT */}
+                        {/* Folieninhalt mit Bild-Slot */}
+                        <div className="my-auto w-full overflow-hidden flex flex-col justify-center space-y-2.5">
+                          
+                          {/* BILD-CONTAINER (falls Bild hochgeladen wurde) */}
+                          {slide.imageUrl && (
+                            <div className="relative w-full max-h-32 rounded-xl overflow-hidden border border-zinc-700/40 bg-zinc-950/40 flex items-center justify-center shrink-0">
+                              <img
+                                src={slide.imageUrl}
+                                alt="Slide Asset"
+                                className="w-full h-full object-contain max-h-32 p-1"
+                              />
+                              <button
+                                onClick={() => removeSlideImage(idx)}
+                                title="Bild entfernen"
+                                className="no-export absolute top-1 right-1 p-1 rounded-full bg-zinc-900/80 hover:bg-red-600 text-zinc-300 hover:text-white transition"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+
+                          {/* 1. COVER LAYOUT */}
                           {currentLayout === "cover" && (
-                            <div className={`text-center px-2 ${isStory ? "space-y-6" : "space-y-4"}`}>
+                            <div className={`text-center px-1 ${isStory ? "space-y-4" : "space-y-2"}`}>
                               <div
-                                className="inline-block px-3 py-1 rounded-full text-[10px] font-semibold tracking-widest uppercase border font-sans"
+                                className="inline-block px-2.5 py-0.5 rounded-full text-[9px] font-semibold tracking-widest uppercase border font-sans"
                                 style={{ borderColor: `${theme.accent}40`, color: theme.accent, backgroundColor: `${theme.accent}15` }}
                               >
                                 {authorName}
                               </div>
                               <textarea
-                                rows={3}
+                                rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                placeholder="Hook Headline..."
-                                className={`w-full bg-transparent font-extrabold leading-tight text-center focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
-                                  isStory ? "text-2xl sm:text-3xl" : "text-lg sm:text-xl"
+                                className={`w-full bg-transparent font-extrabold leading-tight text-center focus:outline-none rounded p-1 transition resize-none overflow-hidden ${
+                                  isStory ? "text-2xl" : "text-base sm:text-lg"
                                 }`}
                                 style={{ color: theme.text }}
                               />
                               <textarea
-                                rows={3}
+                                rows={2}
                                 value={slide.content}
                                 onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                placeholder="Teaser-Text..."
-                                className={`w-full bg-transparent leading-relaxed text-center focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
-                                  isStory ? "text-sm sm:text-base" : "text-xs"
+                                className={`w-full bg-transparent leading-relaxed text-center focus:outline-none rounded p-1 transition resize-none overflow-hidden ${
+                                  isStory ? "text-sm" : "text-[11px]"
                                 }`}
                                 style={{ color: theme.subtext }}
                               />
                             </div>
                           )}
 
-                          {/* 2. BULLETS / LIST LAYOUT */}
+                          {/* 2. BULLETS LAYOUT */}
                           {currentLayout === "bullets" && (
-                            <div className={isStory ? "space-y-5" : "space-y-3"}>
+                            <div className="space-y-2">
                               <textarea
                                 rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                placeholder="Listen-Überschrift..."
-                                className={`w-full bg-transparent font-bold leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
-                                  isStory ? "text-lg sm:text-xl" : "text-sm sm:text-base"
-                                }`}
+                                className="w-full bg-transparent font-bold text-sm leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
                                 style={{ color: theme.text }}
                               />
                               <div
-                                className={`rounded-xl border border-dashed transition ${isStory ? "p-5" : "p-3.5"}`}
+                                className="p-2.5 rounded-xl border border-dashed"
                                 style={{ borderColor: `${theme.accent}40`, backgroundColor: `${theme.accent}08` }}
                               >
                                 <textarea
-                                  rows={4}
+                                  rows={3}
                                   value={slide.content}
                                   onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                  placeholder="• Punkt 1&#10;• Punkt 2&#10;• Punkt 3..."
-                                  className={`w-full bg-transparent leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
-                                    isStory ? "text-sm" : "text-xs"
-                                  }`}
+                                  className="w-full bg-transparent text-[11px] leading-relaxed focus:outline-none resize-none overflow-hidden"
                                   style={{ color: theme.text }}
                                 />
                               </div>
                             </div>
                           )}
 
-                          {/* 3. QUOTE / ZITAT LAYOUT */}
+                          {/* 3. QUOTE LAYOUT */}
                           {currentLayout === "quote" && (
-                            <div className={`relative ${isStory ? "space-y-4" : "space-y-2"}`}>
-                              <Quote className="w-8 h-8 opacity-20 absolute -top-4 -left-2 select-none" style={{ color: theme.accent }} />
+                            <div className="relative space-y-1.5">
+                              <Quote className="w-6 h-6 opacity-20 absolute -top-3 -left-1 select-none" style={{ color: theme.accent }} />
                               <textarea
-                                rows={3}
+                                rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                placeholder="„Kernaussage oder Zitat...“"
-                                className={`w-full bg-transparent italic font-bold leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
-                                  isStory ? "text-xl sm:text-2xl" : "text-base sm:text-lg"
-                                }`}
+                                className="w-full bg-transparent italic font-bold text-sm leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
                                 style={{ color: theme.text }}
                               />
                               <textarea
                                 rows={2}
                                 value={slide.content}
                                 onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                placeholder="Autor / Kontext..."
-                                className={`w-full bg-transparent leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
-                                  isStory ? "text-sm" : "text-xs"
-                                }`}
+                                className="w-full bg-transparent text-[11px] leading-relaxed focus:outline-none resize-none overflow-hidden"
                                 style={{ color: theme.accent }}
                               />
                             </div>
                           )}
 
-                          {/* 4. CTA / OUTRO LAYOUT */}
+                          {/* 4. CTA LAYOUT */}
                           {currentLayout === "cta" && (
-                            <div className={`text-center px-2 ${isStory ? "space-y-5" : "space-y-3"}`}>
-                              <Megaphone className={`mx-auto opacity-80 ${isStory ? "w-8 h-8 mb-2" : "w-6 h-6 mb-1"}`} style={{ color: theme.accent }} />
+                            <div className="text-center px-1 space-y-2">
+                              <Megaphone className="mx-auto w-5 h-5 opacity-80" style={{ color: theme.accent }} />
                               <textarea
                                 rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                placeholder="Call to Action Headline..."
-                                className={`w-full bg-transparent font-bold text-center leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
-                                  isStory ? "text-xl sm:text-2xl" : "text-sm sm:text-base"
-                                }`}
+                                className="w-full bg-transparent font-bold text-sm text-center leading-snug focus:outline-none resize-none overflow-hidden"
+                                style={{ color: theme.text }}
+                              />
+                              <textarea
+                                rows={2}
+                                value={slide.content}
+                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                className="w-full bg-transparent text-[11px] text-center leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                style={{ color: theme.subtext }}
+                              />
+                            </div>
+                          )}
+
+                          {/* 5. STATEMENT LAYOUT */}
+                          {currentLayout === "statement" && (
+                            <div className="space-y-2">
+                              <textarea
+                                rows={2}
+                                value={slide.headline}
+                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                className="w-full bg-transparent font-bold text-sm leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
                                 style={{ color: theme.text }}
                               />
                               <textarea
                                 rows={3}
                                 value={slide.content}
                                 onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                placeholder="Handlungsaufforderung..."
-                                className={`w-full bg-transparent text-center leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
-                                  isStory ? "text-sm" : "text-xs"
-                                }`}
-                                style={{ color: theme.subtext }}
-                              />
-                            </div>
-                          )}
-
-                          {/* 5. STATEMENT (STANDARD) LAYOUT */}
-                          {currentLayout === "statement" && (
-                            <div className={isStory ? "space-y-5" : "space-y-3"}>
-                              <textarea
-                                rows={2}
-                                value={slide.headline}
-                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                placeholder="Überschrift eingeben..."
-                                className={`w-full bg-transparent font-bold leading-snug focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
-                                  isStory ? "text-lg sm:text-xl" : "text-sm sm:text-base"
-                                }`}
-                                style={{ color: theme.text }}
-                              />
-                              <textarea
-                                rows={4}
-                                value={slide.content}
-                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                placeholder="Folientext eingeben..."
-                                className={`w-full bg-transparent leading-relaxed focus:outline-none focus:bg-zinc-950/20 focus:ring-1 focus:ring-blue-500/40 rounded-lg p-1 transition resize-none overflow-hidden ${
-                                  isStory ? "text-sm" : "text-xs"
-                                }`}
+                                className="w-full bg-transparent text-[11px] leading-relaxed focus:outline-none resize-none overflow-hidden"
                                 style={{ color: theme.subtext }}
                               />
                             </div>
                           )}
                         </div>
 
-                        {/* Footer Branding Bar */}
+                        {/* Slide-Footer */}
                         <div
-                          className="pt-3 border-t border-zinc-800/40 flex items-center justify-between text-[10px] font-sans shrink-0"
+                          className="pt-2 border-t border-zinc-800/40 flex items-center justify-between text-[9px] font-sans shrink-0"
                           style={{ color: theme.subtext }}
                         >
-                          <span className="truncate max-w-[140px] font-medium">
+                          <span className="truncate max-w-[130px] font-medium">
                             {authorName} <span className="opacity-60">{authorHandle}</span>
                           </span>
                           <span className="font-mono">Swipe ➔</span>
@@ -1297,33 +1279,24 @@ export default function Home() {
                   })}
                 </div>
 
-                {/* Begleittext Box */}
+                {/* Post Copy Begleittext */}
                 {postCopy && (
-                  <div className="bg-zinc-900/70 border border-zinc-800 rounded-3xl p-6 space-y-3">
+                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 space-y-2.5">
                     <div className="flex justify-between items-center">
-                      <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-blue-400" />
-                        Social Media Begleittext (Post Copy)
+                      <h3 className="text-xs font-semibold text-white flex items-center gap-2">
+                        <FileText className="w-3.5 h-3.5 text-blue-400" />
+                        Social Media Begleittext (Post Copy)[cite: 1]
                       </h3>
                       <button
                         onClick={copyToClipboard}
-                        className="bg-zinc-800 hover:bg-zinc-700 text-xs text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition"
+                        className="bg-zinc-800 hover:bg-zinc-700 text-[11px] text-white px-2.5 py-1 rounded-lg flex items-center gap-1 transition"
                       >
-                        {copied ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            Kopiert!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            Kopieren
-                          </>
-                        )}
+                        {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        {copied ? "Kopiert!" : "Kopieren"}
                       </button>
                     </div>
 
-                    <pre className="bg-zinc-950 p-4 rounded-xl text-xs text-zinc-300 font-sans whitespace-pre-wrap leading-relaxed border border-zinc-800/80">
+                    <pre className="bg-zinc-950 p-3 rounded-xl text-xs text-zinc-300 font-sans whitespace-pre-wrap leading-relaxed border border-zinc-800/80 max-h-48 overflow-y-auto">
                       {postCopy}
                     </pre>
                   </div>
@@ -1331,8 +1304,8 @@ export default function Home() {
               </div>
             )}
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 }
