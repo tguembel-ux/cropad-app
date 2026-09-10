@@ -875,7 +875,7 @@ export default function Home() {
                           </div>
                         </div>
 
-                        {/* Untertext (Jetzt 100% einheitlich mit Color-Picker & Hex-Input) */}
+                        {/* Untertext */}
                         <div>
                           <label className="text-[10px] text-zinc-400 block mb-1">Untertext</label>
                           <div className="flex items-center gap-1.5 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 focus-within:border-blue-500">
@@ -961,7 +961,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* UNTERER BEREICH: Live-Editor mit dynamischem clamp & 9:16 Spacing */}
+            {/* UNTERER BEREICH: Live-Editor */}
             {slides.length > 0 && (
               <div className="space-y-8 pt-4 border-t border-zinc-800 animate-in fade-in duration-300">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-zinc-900/40 p-4 rounded-2xl border border-zinc-800">
@@ -1035,7 +1035,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Folien-Vorschau Grid mit dynamischem 9:16 Spacing & clamp-Typografie */}
+                {/* Folien-Vorschau Grid (Hauptkarte ohne overflow-hidden, damit Buttons nicht beschnitten werden) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {slides.map((slide, idx) => {
                     const currentLayout: LayoutType = slide.layoutType || (idx === 0 ? "cover" : idx === slides.length - 1 ? "cta" : "statement");
@@ -1048,7 +1048,7 @@ export default function Home() {
                         }}
                         onDragOver={(e) => handleDragOver(e, idx)}
                         onDrop={() => handleDrop(idx)}
-                        className={`relative group rounded-2xl flex flex-col justify-between shadow-2xl transition border overflow-hidden ${
+                        className={`relative group rounded-2xl flex flex-col justify-between shadow-2xl transition border ${
                           isStory ? "p-8 space-y-6" : "p-6 space-y-3"
                         } ${
                           draggedIndex === idx
@@ -1061,8 +1061,8 @@ export default function Home() {
                           fontFamily: activeFontFamily,
                         }}
                       >
-                        {/* Entkoppelte Hover-Aktionsleiste */}
-                        <div className="no-export absolute -top-3.5 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-20">
+                        {/* Entkoppelte Hover-Aktionsleiste: Sichtbar oben rechts platziert */}
+                        <div className="no-export absolute -top-3.5 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-30">
                           <button
                             onClick={() => moveSlide(idx, "left")}
                             disabled={idx === 0}
@@ -1136,7 +1136,7 @@ export default function Home() {
                           </span>
                         </div>
 
-                        {/* DYNAMISCHER INHALT (Mit dynamischem Clamp & automatischem Zeilenumbruch) */}
+                        {/* DYNAMISCHER INHALT (Textbereich mit overflow-hidden geschützt) */}
                         <div className="my-auto w-full overflow-hidden flex flex-col justify-center">
                           {/* 1. COVER / HOOK LAYOUT */}
                           {currentLayout === "cover" && (

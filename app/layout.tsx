@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
+import { Sidebar } from "@/components/layout/Sidebar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CropAd - Content Repurposing & Carousels",
-  description: "Erstelle virale Karussells für LinkedIn und Social Media",
+  title: "CropAd - Social Media Suite & Carousel Studio",
+  description: "Erstelle visuelle Karussells, plane Posts und verwalte Brand-Assets",
 };
 
 export default function RootLayout({
@@ -26,8 +27,16 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="de" suppressHydrationWarning>
-        <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-          {children}
+        <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-950 text-zinc-100 overflow-hidden`}>
+          <div className="flex h-screen w-screen">
+            {/* Fixierte vertikale Sidebar links */}
+            <Sidebar />
+
+            {/* Dynamischer Arbeitsbereich rechts */}
+            <main className="flex-1 h-full overflow-y-auto">
+              {children}
+            </main>
+          </div>
         </body>
       </html>
     </ClerkProvider>
