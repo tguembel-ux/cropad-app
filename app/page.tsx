@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useUser, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import Link from "next/link";
+import { useUser, SignInButton, SignUpButton } from "@clerk/nextjs";
 import {
   Sparkles,
   Layers,
@@ -28,6 +29,7 @@ import {
   Info,
   ImageIcon,
   X,
+  ExternalLink,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import jsPDF from "jspdf";
@@ -103,6 +105,21 @@ interface CustomTheme {
   subtext: string;
 }
 
+interface StoredFont {
+  id: string;
+  name: string;
+  fileName: string;
+  dataUrl: string;
+}
+
+interface StoredAsset {
+  id: string;
+  name: string;
+  category: "logo" | "graphic" | "product";
+  dataUrl: string;
+  sizeKb: number;
+}
+
 export default function Home() {
   const { isSignedIn, isLoaded } = useUser();
   const [loading, setLoading] = useState(false);
@@ -115,16 +132,20 @@ export default function Home() {
   const [theme, setTheme] = useState<CustomTheme>(DEFAULT_COLOR_PRESETS[0]);
   const [showCustomColors, setShowCustomColors] = useState(false);
 
-  // Tab-Wechsel für Einstellungen in der linken Spalte
+  // Tab-Wechsel für linke Spalte
   const [activeConfigTab, setActiveConfigTab] = useState<"text" | "design" | "brand">("text");
 
-  // Brand-Kit: Gespeicherte Themes
+  // Synchronisierte Assets aus LocalStorage
   const [savedThemes, setSavedThemes] = useState<CustomTheme[]>([]);
+  const [savedFonts, setSavedFonts] = useState<StoredFont[]>([]);
+  const [savedAssets, setSavedAssets] = useState<StoredAsset[]>([]);
   const [newThemeName, setNewThemeName] = useState("");
+
+  // Asset-Picker Modal State (für welche Folie wird gewählt)
+  const [assetPickerSlideIdx, setAssetPickerSlideIdx] = useState<number | null>(null);
 
   // Typografie-State
   const [selectedFont, setSelectedFont] = useState(FONT_PRESETS[0].id);
-  const [customFontName, setCustomFontName] = useState<string | null>(null);
 
   // Dateiname & Projekt
   const [projectName, setProjectName] = useState("CropAd-Projekt");
@@ -152,14 +173,47 @@ export default function Home() {
 
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
 
+  // Font-Registrierungs-Helfer
+  const registerFontFace = (name: string, dataUrl: string) => {
+    const styleId = `font-style-${name}`;
+    if (document.getElementById(styleId)) return;
+    const styleEl = document.createElement("style");
+    styleEl.id = styleId;
+    styleEl.appendChild(
+      document.createTextNode(`
+        @font-face {
+          font-family: '${name}';
+          src: url('${dataUrl}');
+        }
+      `)
+    );
+    document.head.appendChild(styleEl);
+  };
+
+  // Synchrone Initialisierung aller Assets aus dem Workspace
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("cropad_custom_themes");
-      if (stored) {
-        setSavedThemes(JSON.parse(stored));
+      // 1. Themes laden
+      const storedThemes = localStorage.getItem("cropad_custom_themes");
+      if (storedThemes) {
+        setSavedThemes(JSON.parse(storedThemes));
       }
-    } catch {
-      // LocalStorage fallback
+
+      // 2. Schriften laden & im DOM registrieren
+      const storedFonts = localStorage.getItem("cropad_custom_fonts");
+      if (storedFonts) {
+        const parsedFonts: StoredFont[] = JSON.parse(storedFonts);
+        setSavedFonts(parsedFonts);
+        parsedFonts.forEach((f) => registerFontFace(f.name, f.dataUrl));
+      }
+
+      // 3. Logos & Grafiken laden
+      const storedAssets = localStorage.getItem("cropad_custom_assets");
+      if (storedAssets) {
+        setSavedAssets(JSON.parse(storedAssets));
+      }
+    } catch (err) {
+      console.error("Fehler beim Laden der Brand-Assets:", err);
     }
   }, []);
 
@@ -247,48 +301,25 @@ export default function Home() {
     }
   };
 
-  const handleFontUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const fontName = `UserFont_${Date.now()}`;
-    const reader = new FileReader();
-
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (!result) return;
-
-      const newStyle = document.createElement("style");
-      newStyle.appendChild(
-        document.createTextNode(`
-          @font-face {
-            font-family: '${fontName}';
-            src: url('${result}');
-          }
-        `)
-      );
-      document.head.appendChild(newStyle);
-
-      setCustomFontName(fontName);
-      setSelectedFont("custom");
-    };
-
-    reader.readAsDataURL(file);
+  // Bild aus Galerie zu Folie zuweisen
+  const assignAssetToSlide = (slideIdx: number, dataUrl: string) => {
+    setSlides((prev) => {
+      const updated = [...prev];
+      updated[slideIdx] = { ...updated[slideIdx], imageUrl: dataUrl };
+      return updated;
+    });
+    setAssetPickerSlideIdx(null);
   };
 
-  // Bild-Upload pro Slide (FileReader -> Base64)
-  const handleSlideImageUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+  // Neues Bild von Festplatte hochladen
+  const handleDirectImageUpload = (slideIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = () => {
       if (reader.result) {
-        setSlides((prev) => {
-          const updated = [...prev];
-          updated[index] = { ...updated[index], imageUrl: reader.result as string };
-          return updated;
-        });
+        assignAssetToSlide(slideIdx, reader.result as string);
       }
     };
     reader.readAsDataURL(file);
@@ -303,11 +334,12 @@ export default function Home() {
   };
 
   const getActiveFontFamily = () => {
-    if (selectedFont === "custom" && customFontName) {
-      return `'${customFontName}', sans-serif`;
+    if (selectedFont.startsWith("custom_")) {
+      const foundCustom = savedFonts.find((f) => f.id === selectedFont.replace("custom_", ""));
+      if (foundCustom) return `'${foundCustom.name}', sans-serif`;
     }
-    const found = FONT_PRESETS.find((f) => f.id === selectedFont);
-    return found ? found.fontFamily : FONT_PRESETS[0].fontFamily;
+    const foundPreset = FONT_PRESETS.find((f) => f.id === selectedFont);
+    return foundPreset ? foundPreset.fontFamily : FONT_PRESETS[0].fontFamily;
   };
 
   const handleGenerate = async () => {
@@ -574,7 +606,7 @@ export default function Home() {
         /* SIDE-BY-SIDE HAUPTCONTAINER */
         <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden">
           
-          {/* LINKE SPALTE: Input, Prompt, Format & Branding (Scrollt separat) */}
+          {/* LINKE SPALTE: Input, Prompt, Format & Branding */}
           <div className="w-full lg:w-[460px] h-full overflow-y-auto border-r border-zinc-800/80 bg-zinc-950/70 p-6 flex flex-col space-y-5 shrink-0">
             
             {/* Header / Tabs */}
@@ -694,15 +726,25 @@ export default function Home() {
               </div>
             )}
 
-            {/* TAB 2: DESIGN & SCHRIFTEN */}
+            {/* TAB 2: DESIGN & SCHRIFTEN (VOLL INTEGRIERT MIT ASSETS) */}
             {activeConfigTab === "design" && (
               <div className="space-y-4 animate-in fade-in duration-150">
                 {/* Typografie */}
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Type className="w-3.5 h-3.5 text-blue-400" />
-                    Typografie
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Type className="w-3.5 h-3.5 text-blue-400" />
+                      Typografie & Schriften
+                    </label>
+                    <Link
+                      href="/assets"
+                      className="text-[10px] text-blue-400 hover:underline flex items-center gap-1"
+                    >
+                      Assets verwalten <ExternalLink className="w-2.5 h-2.5" />
+                    </Link>
+                  </div>
+
+                  {/* Standard-Schriften */}
                   <div className="grid grid-cols-2 gap-2">
                     {FONT_PRESETS.map((f) => (
                       <button
@@ -720,20 +762,43 @@ export default function Home() {
                     ))}
                   </div>
 
-                  <label className="flex items-center justify-center gap-2 w-full p-2 rounded-xl border border-dashed border-zinc-700 hover:border-blue-500 bg-zinc-900/30 text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer transition">
-                    <Upload className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Eigene Schriftart (.ttf / .woff2)</span>
-                    <input
-                      type="file"
-                      accept=".ttf,.otf,.woff,.woff2"
-                      onChange={handleFontUpload}
-                      className="hidden"
-                    />
-                  </label>
+                  {/* Eigene Schriften aus der Asset-Bibliothek */}
+                  {savedFonts.length > 0 && (
+                    <div className="pt-2 space-y-1.5">
+                      <span className="text-[10px] text-zinc-400 uppercase font-semibold block">
+                        Deine Hausschriften ({savedFonts.length})
+                      </span>
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {savedFonts.map((f) => {
+                          const customFontKey = `custom_${f.id}`;
+                          const isActive = selectedFont === customFontKey;
+                          return (
+                            <button
+                              key={f.id}
+                              onClick={() => setSelectedFont(customFontKey)}
+                              className={`p-2 rounded-xl border text-left transition flex items-center justify-between ${
+                                isActive
+                                  ? "border-blue-500 bg-blue-500/15 text-white"
+                                  : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 text-zinc-300"
+                              }`}
+                            >
+                              <span
+                                className="text-xs truncate"
+                                style={{ fontFamily: `'${f.name}', sans-serif` }}
+                              >
+                                {f.fileName}
+                              </span>
+                              {isActive && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Farben & Presets */}
-                <div className="space-y-3 pt-2 border-t border-zinc-800/60">
+                {/* Farben & Brand-Kits */}
+                <div className="space-y-3 pt-3 border-t border-zinc-800/60">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
                       <Palette className="w-3.5 h-3.5 text-blue-400" />
@@ -773,13 +838,19 @@ export default function Home() {
 
                       {savedThemes.length > 0 && (
                         <div className="pt-2 space-y-1.5">
-                          <span className="text-[10px] text-zinc-400 uppercase font-semibold">Gespeicherte Themes</span>
+                          <span className="text-[10px] text-zinc-400 uppercase font-semibold">
+                            Brand-Kits aus Workspace ({savedThemes.length})
+                          </span>
                           <div className="grid grid-cols-2 gap-2">
                             {savedThemes.map((p) => (
                               <div
                                 key={p.name}
                                 onClick={() => handleSelectPreset(p)}
-                                className="p-2 rounded-xl border border-zinc-800 bg-zinc-900/50 flex items-center justify-between cursor-pointer hover:border-zinc-700"
+                                className={`p-2 rounded-xl border flex items-center justify-between cursor-pointer transition ${
+                                  theme.name === p.name
+                                    ? "border-blue-500 bg-zinc-800/80"
+                                    : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
+                                }`}
                               >
                                 <span className="text-xs text-zinc-200 truncate">{p.name}</span>
                                 <button
@@ -936,7 +1007,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* Generieren Button (immer sichtbar in der linken Spalte) */}
+            {/* Generieren Button */}
             <div className="mt-auto pt-4 border-t border-zinc-800/80">
               <button
                 onClick={handleGenerate}
@@ -958,7 +1029,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* RECHTE SPALTE: Live-Folien-Editor & Export (Scrollt separat) */}
+          {/* RECHTE SPALTE: Live-Folien-Editor & Export */}
           <div className="flex-1 h-full overflow-y-auto p-6 space-y-6 bg-zinc-950">
             {slides.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-8 border border-dashed border-zinc-800 rounded-3xl space-y-3 text-zinc-500">
@@ -1105,19 +1176,14 @@ export default function Home() {
                               <option value="cta">CTA</option>
                             </select>
 
-                            {/* Bild Upload Button (no-export) */}
-                            <label
-                              title="Bild/Logo auf Folie einbinden"
-                              className="no-export p-1 rounded hover:bg-zinc-800/80 text-zinc-400 hover:text-blue-400 cursor-pointer transition"
+                            {/* Bild/Logo-Button: Öffnet den Asset-Picker Dialog */}
+                            <button
+                              onClick={() => setAssetPickerSlideIdx(idx)}
+                              title="Logo oder Grafik aus Bibliothek wählen"
+                              className="no-export p-1 rounded hover:bg-zinc-800/80 text-zinc-400 hover:text-blue-400 transition"
                             >
                               <ImageIcon className="w-3.5 h-3.5" />
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => handleSlideImageUpload(idx, e)}
-                                className="hidden"
-                              />
-                            </label>
+                            </button>
                           </div>
 
                           <span className="font-mono text-xs select-none" style={{ color: theme.subtext }}>
@@ -1128,7 +1194,7 @@ export default function Home() {
                         {/* Folieninhalt mit Bild-Slot */}
                         <div className="my-auto w-full overflow-hidden flex flex-col justify-center space-y-2.5">
                           
-                          {/* BILD-CONTAINER (falls Bild hochgeladen wurde) */}
+                          {/* BILD-CONTAINER */}
                           {slide.imageUrl && (
                             <div className="relative w-full max-h-32 rounded-xl overflow-hidden border border-zinc-700/40 bg-zinc-950/40 flex items-center justify-center shrink-0">
                               <img
@@ -1285,7 +1351,7 @@ export default function Home() {
                     <div className="flex justify-between items-center">
                       <h3 className="text-xs font-semibold text-white flex items-center gap-2">
                         <FileText className="w-3.5 h-3.5 text-blue-400" />
-                        Social Media Begleittext (Post Copy)[cite: 1]
+                        Social Media Begleittext (Post Copy)
                       </h3>
                       <button
                         onClick={copyToClipboard}
@@ -1303,6 +1369,89 @@ export default function Home() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ASSET-PICKER MODAL (Wird geöffnet beim Klick auf Bild-Symbol auf einer Folie) */}
+      {assetPickerSlideIdx !== null && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-2xl w-full p-6 space-y-5 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-blue-400" />
+                  Grafik oder Logo wählen (Folie {assetPickerSlideIdx + 1})
+                </h3>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Wähle ein Asset aus deiner Bibliothek oder lade ein Bild von deiner Festplatte hoch.
+                </p>
+              </div>
+              <button
+                onClick={() => setAssetPickerSlideIdx(null)}
+                className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Gespeicherte Assets aus Workspace */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+                  Aus Asset-Bibliothek ({savedAssets.length})
+                </span>
+                <Link
+                  href="/assets"
+                  target="_blank"
+                  className="text-[11px] text-blue-400 hover:underline flex items-center gap-1"
+                >
+                  Neue Assets hochladen <ExternalLink className="w-3 h-3" />
+                </Link>
+              </div>
+
+              {savedAssets.length === 0 ? (
+                <div className="p-6 rounded-2xl border border-dashed border-zinc-800 text-center text-xs text-zinc-500">
+                  Noch keine Assets in der Bibliothek gespeichert. Gehe in den Bereich „Assets & Vorlagen“ oder lade unten eine Datei hoch.
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-56 overflow-y-auto p-1">
+                  {savedAssets.map((asset) => (
+                    <button
+                      key={asset.id}
+                      onClick={() => assignAssetToSlide(assetPickerSlideIdx, asset.dataUrl)}
+                      className="group p-2 rounded-xl border border-zinc-800 bg-zinc-950/60 hover:border-blue-500 flex flex-col items-center gap-1.5 transition text-left"
+                    >
+                      <div className="h-16 w-full flex items-center justify-center p-1">
+                        <img
+                          src={asset.dataUrl}
+                          alt={asset.name}
+                          className="max-h-full max-w-full object-contain group-hover:scale-105 transition"
+                        />
+                      </div>
+                      <span className="text-[10px] text-zinc-300 truncate w-full text-center">
+                        {asset.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Direkter File Upload von Festplatte */}
+            <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
+              <span className="text-xs text-zinc-400">Oder von Festplatte wählen:</span>
+              <label className="bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium px-4 py-2 rounded-xl cursor-pointer transition flex items-center gap-1.5 border border-zinc-700">
+                <Upload className="w-3.5 h-3.5 text-blue-400" />
+                <span>Datei auswählen</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleDirectImageUpload(assetPickerSlideIdx, e)}
+                  className="hidden"
+                />
+              </label>
+            </div>
           </div>
         </div>
       )}
