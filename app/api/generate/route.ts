@@ -1,88 +1,99 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const { content, customPrompt, numSlides = 5 } = await req.json();
+    const { content, customPrompt, numSlides } = await req.json();
 
     if (!content || typeof content !== "string") {
       return NextResponse.json(
-        { error: "Kein Quelltext bereitgestellt." },
+        { success: false, error: "Quelltext fehlt oder ist ungültig." },
         { status: 400 }
       );
     }
 
+    const slideCount = Math.min(Math.max(Number(numSlides) || 5, 1), 10);
+
     const systemPrompt = `
-Du bist ein erstklassiger B2B-Social-Media-Ghostwriter und Content-Stratege.
-Deine Aufgabe ist es, aus dem gegebenen Quelltext ein packendes Karussell (exakt ${numSlides} Folien) sowie einen passenden Begleittext (Post Copy) zu erstellen.
+Du bist ein erstklassiger B2B-Social-Media-Ghostwriter und Carousel-Designer für LinkedIn und Instagram.
+Deine Aufgabe ist es, den Quelltext in genau ${slideCount} logisch aufeinander aufbauende Karussell-Folien zu zerlegen und einen hochkonvertierenden Begleittext (Post Copy) zu verfassen.
 
-STRIKTE REGELN GEGEN TEXTÜBERLAUF UND WIEDERHOLUNG:
-1. Erstelle GENAU ${numSlides} Folien.
-2. Jede Folie MUSS einen eigenständigen, sequenziellen Schritt oder Gedanken darstellen. Wiederhole keinesfalls Thesen aus vorherigen Folien.
-3. Wortbegrenzungen einhalten:
-   - "headline": Maximal 6 bis 8 Wörter. Kurz, pointiert, stark formuliert.
-   - "content": Maximal 25 bis 30 Wörter. Prägnante Sätze oder 2-3 knackige Bulletpoints. Kein Scrollen nötig!
-4. Layout-Typen ("layoutType") passend zuordnen:
-   - "cover": Für Folie 1 (starke Hook, riesige Headline, prägnanter Untertitel)
-   - "bullets": Für Aufzählungen, Schritte oder Tipps (Headline oben, 2-3 knackige Punkte im Content)
-   - "quote": Für Kernaussagen, Merksätze oder Zitate
-   - "statement": Für fundierte Erklärungen oder Gedankenanstöße (Standard)
-   - "cta": Für die letzte Folie (konkrete Handlungsaufforderung, Frage an die Community)
+WÄHLE FÜR JEDE FOLIE DAS OPTIMALE LAYOUT:
+- "cover": Die klassische Einstiegs-Hook-Folie mit starkem Titel.
+- "hero": Ein visuelles Cover oder emotionales Highlight mit vollflächigem Hintergrundbild.
+- "statement": Eine prägnante Kernaussage mit kurzer Erklärung.
+- "splitscreen": 50/50 Aufteilung aus Bild/Grafik-Fokus und präzisem Text.
+- "bigstat": Für auffällige Kennzahlen, Prozentsätze, Multiplikatoren oder Statistiken. Benötigt das Feld "statNumber" (z. B. "+340%", "10x", "87%", "€1.2M").
+- "step": Für Schritt-für-Schritt-Anleitungen, Frameworks und Phasen. Benötigt das Feld "stepBadge" (z. B. "SCHRITT 01", "PHASE 2").
+- "bullets": Für Aufzählungen, Checklisten oder 3-4 Bulletpoints.
+- "quote": Für Zitate oder prägende Leitsätze.
+- "cta": Die finale Abschlussfolie mit klarer Handlungsaufforderung.
 
-Antworte AUSSCHLIESSLICH im folgenden JSON-Format:
+REGELN FÜR DIE STRUKTUR:
+- Folie 1 MUSS "cover" oder "hero" sein.
+- Die letzte Folie MUSS "cta" sein.
+- Nutze "bigstat", sobald der Quelltext relevante Zahlen, ROI-Daten oder Prozente enthält.
+- Nutze "step", wenn Anleitungen oder aufeinanderfolgende Tipps vorkommen.
+- Texte kurz, direkt und auf den Punkt halten (keine Schachtelsätze).
+
+ANTWORTE AUSSCHLIESSLICH IM FOLGENDEN JSON-FORMAT:
 {
   "slides": [
     {
       "slideNumber": 1,
       "tag": "HOOK",
       "layoutType": "cover",
-      "headline": "Prägnante Hook-Headline",
-      "content": "Kurzer, neugierig machender Teaser-Text."
+      "headline": "Knackige Überschrift",
+      "content": "Teaser oder Erklärung",
+      "statNumber": "+250%",
+      "stepBadge": "SCHRITT 01"
     }
   ],
-  "postCopy": "Der fertige Social Media Begleittext mit Hook, Absätzen, Emojis und Call-to-Action."
+  "postCopy": "Vollständiger LinkedIn-Begleittext mit Hook, Absätzen, Aufzählungspunkten und Call to Action."
 }
 `;
 
-    const userMessage = `
-Quelltext / Notizen:
+    const userPrompt = `
+Quelltext:
 """
 ${content}
 """
 
-${customPrompt ? `Zusätzliche Nutzer-Anweisungen:\n"""\n${customPrompt}\n"""` : ""}
+${customPrompt ? `Zusätzliche Benutzer-Anweisungen (Tonalität, Zielgruppe):\n"""${customPrompt}"""\n` : ""}
+
+Erstelle jetzt das JSON mit genau ${slideCount} Folien und der Post Copy.
 `;
 
-    const completion = await openai.chat.completions.create({
+    const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
+        { role: "user", content: userPrompt },
       ],
       response_format: { type: "json_object" },
       temperature: 0.7,
     });
 
-    const responseContent = completion.choices[0].message.content;
-    if (!responseContent) {
+    const rawContent = response.choices[0]?.message?.content;
+    if (!rawContent) {
       throw new Error("Keine Antwort von OpenAI erhalten.");
     }
 
-    const parsedData = JSON.parse(responseContent);
+    const parsed = JSON.parse(rawContent);
 
     return NextResponse.json({
       success: true,
-      slides: parsedData.slides,
-      postCopy: parsedData.postCopy,
+      slides: parsed.slides || [],
+      postCopy: parsed.postCopy || "",
     });
   } catch (error: any) {
-    console.error("Fehler bei der Generierung:", error);
+    console.error("Fehler bei der Carousel-Generierung:", error);
     return NextResponse.json(
-      { error: error.message || "Interner Serverfehler" },
+      { success: false, error: error.message || "Interner Serverfehler." },
       { status: 500 }
     );
   }

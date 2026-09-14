@@ -12,7 +12,6 @@ import {
   Palette,
   FileText,
   SlidersHorizontal,
-  ChevronRight,
   Trash2,
   ArrowLeft,
   ArrowRight,
@@ -35,7 +34,6 @@ import { toPng } from "html-to-image";
 import jsPDF from "jspdf";
 import JSZip from "jszip";
 
-// Vordefinierte B2B-Farbpresets
 const DEFAULT_COLOR_PRESETS = [
   {
     name: "Dark Slate",
@@ -71,7 +69,6 @@ const DEFAULT_COLOR_PRESETS = [
   },
 ];
 
-// Typografie-Presets
 const FONT_PRESETS = [
   { id: "sans", name: "Modern Sans", fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
   { id: "serif", name: "Editorial Serif", fontFamily: "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif" },
@@ -80,12 +77,21 @@ const FONT_PRESETS = [
 ];
 
 const AD_FORMATS = [
-  { id: "4_5", name: "LinkedIn Karussell (4:5)", desc: "1080 × 1350 px (PDF / PNG)", aspect: "aspect-[4/5]", width: 1080, height: 1350 },
-  { id: "1_1", name: "Square Post (1:1)", desc: "1080 × 1080 px (Feed)", aspect: "aspect-square", width: 1080, height: 1080 },
-  { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels / Stories)", aspect: "aspect-[9/16]", width: 1080, height: 1920 },
+  { id: "4_5", name: "LinkedIn Karussell (4:5)", desc: "1080 × 1350 px (PDF / PNG)", aspect: "aspect-[4/5]", width: 1080, height: 1350, cardWidth: "w-[305px]" },
+  { id: "1_1", name: "Square Post (1:1)", desc: "1080 × 1080 px (Feed)", aspect: "aspect-square", width: 1080, height: 1080, cardWidth: "w-[305px]" },
+  { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels / Stories)", aspect: "aspect-[9/16]", width: 1080, height: 1920, cardWidth: "w-[260px]" },
 ];
 
-export type LayoutType = "cover" | "statement" | "bullets" | "quote" | "cta";
+export type LayoutType =
+  | "cover"
+  | "hero"
+  | "statement"
+  | "splitscreen"
+  | "bigstat"
+  | "step"
+  | "bullets"
+  | "quote"
+  | "cta";
 
 interface Slide {
   slideNumber: number;
@@ -94,6 +100,8 @@ interface Slide {
   headline: string;
   content: string;
   imageUrl?: string;
+  statNumber?: string;
+  stepBadge?: string;
 }
 
 interface CustomTheme {
@@ -132,30 +140,21 @@ export default function Home() {
   const [theme, setTheme] = useState<CustomTheme>(DEFAULT_COLOR_PRESETS[0]);
   const [showCustomColors, setShowCustomColors] = useState(false);
 
-  // Tab-Wechsel für linke Spalte
   const [activeConfigTab, setActiveConfigTab] = useState<"text" | "design" | "brand">("text");
 
-  // Synchronisierte Assets aus LocalStorage
   const [savedThemes, setSavedThemes] = useState<CustomTheme[]>([]);
   const [savedFonts, setSavedFonts] = useState<StoredFont[]>([]);
   const [savedAssets, setSavedAssets] = useState<StoredAsset[]>([]);
   const [newThemeName, setNewThemeName] = useState("");
 
-  // Asset-Picker Modal State (für welche Folie wird gewählt)
   const [assetPickerSlideIdx, setAssetPickerSlideIdx] = useState<number | null>(null);
-
-  // Typografie-State
   const [selectedFont, setSelectedFont] = useState(FONT_PRESETS[0].id);
 
-  // Dateiname & Projekt
   const [projectName, setProjectName] = useState("CropAd-Projekt");
-
-  // Folien-Optionen
   const [showTags, setShowTags] = useState(true);
   const [authorName, setAuthorName] = useState("CropAd Creator");
   const [authorHandle, setAuthorHandle] = useState("@cropad");
 
-  // Hexcode-Inputs
   const [hexInputs, setHexInputs] = useState({
     bg: DEFAULT_COLOR_PRESETS[0].bg,
     accent: DEFAULT_COLOR_PRESETS[0].accent,
@@ -163,17 +162,13 @@ export default function Home() {
     subtext: DEFAULT_COLOR_PRESETS[0].subtext,
   });
 
-  // Ergebnis-States
   const [slides, setSlides] = useState<Slide[]>([]);
   const [postCopy, setPostCopy] = useState<string>("");
   const [copied, setCopied] = useState(false);
-
-  // Drag & Drop State
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Font-Registrierungs-Helfer
   const registerFontFace = (name: string, dataUrl: string) => {
     const styleId = `font-style-${name}`;
     if (document.getElementById(styleId)) return;
@@ -190,16 +185,11 @@ export default function Home() {
     document.head.appendChild(styleEl);
   };
 
-  // Synchrone Initialisierung aller Assets aus dem Workspace
   useEffect(() => {
     try {
-      // 1. Themes laden
       const storedThemes = localStorage.getItem("cropad_custom_themes");
-      if (storedThemes) {
-        setSavedThemes(JSON.parse(storedThemes));
-      }
+      if (storedThemes) setSavedThemes(JSON.parse(storedThemes));
 
-      // 2. Schriften laden & im DOM registrieren
       const storedFonts = localStorage.getItem("cropad_custom_fonts");
       if (storedFonts) {
         const parsedFonts: StoredFont[] = JSON.parse(storedFonts);
@@ -207,11 +197,8 @@ export default function Home() {
         parsedFonts.forEach((f) => registerFontFace(f.name, f.dataUrl));
       }
 
-      // 3. Logos & Grafiken laden
       const storedAssets = localStorage.getItem("cropad_custom_assets");
-      if (storedAssets) {
-        setSavedAssets(JSON.parse(storedAssets));
-      }
+      if (storedAssets) setSavedAssets(JSON.parse(storedAssets));
     } catch (err) {
       console.error("Fehler beim Laden der Brand-Assets:", err);
     }
@@ -230,46 +217,29 @@ export default function Home() {
 
   const handleHexChange = (key: "bg" | "accent" | "text" | "subtext", val: string) => {
     let formatted = val.trim();
-    if (formatted.length > 0 && !formatted.startsWith("#")) {
-      formatted = `#${formatted}`;
-    }
-
+    if (formatted.length > 0 && !formatted.startsWith("#")) formatted = `#${formatted}`;
     setHexInputs((prev) => ({ ...prev, [key]: formatted }));
 
     if (isValidHex(formatted)) {
-      if (key === "bg") {
-        setTheme((prev) => ({ ...prev, bg: formatted, cardBg: formatted }));
-      } else {
-        setTheme((prev) => ({ ...prev, [key]: formatted }));
-      }
+      if (key === "bg") setTheme((prev) => ({ ...prev, bg: formatted, cardBg: formatted }));
+      else setTheme((prev) => ({ ...prev, [key]: formatted }));
     }
   };
 
   const handleColorPickerChange = (key: "bg" | "accent" | "text" | "subtext", val: string) => {
     setHexInputs((prev) => ({ ...prev, [key]: val }));
-    if (key === "bg") {
-      setTheme((prev) => ({ ...prev, bg: val, cardBg: val }));
-    } else {
-      setTheme((prev) => ({ ...prev, [key]: val }));
-    }
+    if (key === "bg") setTheme((prev) => ({ ...prev, bg: val, cardBg: val }));
+    else setTheme((prev) => ({ ...prev, [key]: val }));
   };
 
   const handleSelectPreset = (p: CustomTheme) => {
     setTheme(p);
-    setHexInputs({
-      bg: p.bg,
-      accent: p.accent,
-      text: p.text,
-      subtext: p.subtext,
-    });
+    setHexInputs({ bg: p.bg, accent: p.accent, text: p.text, subtext: p.subtext });
   };
 
   const handleSaveCurrentTheme = () => {
     const trimmed = newThemeName.trim();
-    if (!trimmed) {
-      alert("Bitte gib einen Namen für dein Theme ein.");
-      return;
-    }
+    if (!trimmed) return alert("Bitte gib einen Namen für dein Theme ein.");
 
     const createdTheme: CustomTheme = {
       name: trimmed,
@@ -285,9 +255,7 @@ export default function Home() {
     setNewThemeName("");
     try {
       localStorage.setItem("cropad_custom_themes", JSON.stringify(updated));
-    } catch {
-      // LocalStorage fallback
-    }
+    } catch {}
   };
 
   const handleDeleteTheme = (e: React.MouseEvent, name: string) => {
@@ -296,12 +264,9 @@ export default function Home() {
     setSavedThemes(updated);
     try {
       localStorage.setItem("cropad_custom_themes", JSON.stringify(updated));
-    } catch {
-      // LocalStorage fallback
-    }
+    } catch {}
   };
 
-  // Bild aus Galerie zu Folie zuweisen
   const assignAssetToSlide = (slideIdx: number, dataUrl: string) => {
     setSlides((prev) => {
       const updated = [...prev];
@@ -311,16 +276,13 @@ export default function Home() {
     setAssetPickerSlideIdx(null);
   };
 
-  // Neues Bild von Festplatte hochladen
   const handleDirectImageUpload = (slideIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = () => {
-      if (reader.result) {
-        assignAssetToSlide(slideIdx, reader.result as string);
-      }
+      if (reader.result) assignAssetToSlide(slideIdx, reader.result as string);
     };
     reader.readAsDataURL(file);
   };
@@ -343,10 +305,7 @@ export default function Home() {
   };
 
   const handleGenerate = async () => {
-    if (!content.trim()) {
-      alert("Bitte gib einen Text oder Notizen ein.");
-      return;
-    }
+    if (!content.trim()) return alert("Bitte gib einen Text oder Notizen ein.");
 
     setLoading(true);
     setSlides([]);
@@ -356,15 +315,10 @@ export default function Home() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content,
-          customPrompt,
-          numSlides,
-        }),
+        body: JSON.stringify({ content, customPrompt, numSlides }),
       });
 
       const data = await res.json();
-
       if (data.success) {
         setSlides(data.slides);
         setPostCopy(data.postCopy);
@@ -387,13 +341,7 @@ export default function Home() {
   };
 
   const moveSlide = (index: number, direction: "left" | "right") => {
-    if (
-      (direction === "left" && index === 0) ||
-      (direction === "right" && index === slides.length - 1)
-    ) {
-      return;
-    }
-
+    if ((direction === "left" && index === 0) || (direction === "right" && index === slides.length - 1)) return;
     setSlides((prev) => {
       const updated = [...prev];
       const targetIndex = direction === "left" ? index - 1 : index + 1;
@@ -404,17 +352,10 @@ export default function Home() {
     });
   };
 
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index);
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-  };
-
+  const handleDragStart = (index: number) => setDraggedIndex(index);
+  const handleDragOver = (e: React.DragEvent, index: number) => e.preventDefault();
   const handleDrop = (targetIndex: number) => {
     if (draggedIndex === null || draggedIndex === targetIndex) return;
-
     setSlides((prev) => {
       const updated = [...prev];
       const draggedItem = updated[draggedIndex];
@@ -426,18 +367,12 @@ export default function Home() {
   };
 
   const deleteSlide = (index: number) => {
-    if (slides.length <= 1) {
-      alert("Ein Karussell benötigt mindestens eine Folie.");
-      return;
-    }
+    if (slides.length <= 1) return alert("Ein Karussell benötigt mindestens eine Folie.");
     setSlides((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const addSlide = () => {
-    if (slides.length >= 12) {
-      alert("Maximal 12 Folien sind im Editor erlaubt.");
-      return;
-    }
+    if (slides.length >= 12) return alert("Maximal 12 Folien sind im Editor erlaubt.");
     setSlides((prev) => [
       ...prev,
       {
@@ -457,7 +392,7 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // PDF-Export
+  // NORMALTER EXPORT: Rendert unabhängig von Bildschirmauflösung immer pixelgenau
   const handleExportPDF = async () => {
     if (slides.length === 0) return;
     setExportingPdf(true);
@@ -467,7 +402,7 @@ export default function Home() {
       const orientation = activeFmt.width > activeFmt.height ? "landscape" : "portrait";
 
       const pdf = new jsPDF({
-        orientation: orientation,
+        orientation,
         unit: "px",
         format: [activeFmt.width, activeFmt.height],
         hotfixes: ["px_scaling"],
@@ -480,23 +415,15 @@ export default function Home() {
         const imgData = await toPng(slideEl, {
           canvasWidth: activeFmt.width,
           canvasHeight: activeFmt.height,
-          pixelRatio: 1.5,
+          pixelRatio: 2,
           style: {
             borderRadius: "0px",
             transform: "scale(1)",
           },
-          filter: (node) => {
-            if (node instanceof HTMLElement && node.classList.contains("no-export")) {
-              return false;
-            }
-            return true;
-          },
+          filter: (node) => !(node instanceof HTMLElement && node.classList.contains("no-export")),
         });
 
-        if (i > 0) {
-          pdf.addPage([activeFmt.width, activeFmt.height], orientation);
-        }
-
+        if (i > 0) pdf.addPage([activeFmt.width, activeFmt.height], orientation);
         pdf.addImage(imgData, "JPEG", 0, 0, activeFmt.width, activeFmt.height, undefined, "FAST");
       }
 
@@ -510,7 +437,6 @@ export default function Home() {
     }
   };
 
-  // ZIP-Export
   const handleExportZIP = async () => {
     if (slides.length === 0) return;
     setExportingZip(true);
@@ -526,36 +452,26 @@ export default function Home() {
         const imgData = await toPng(slideEl, {
           canvasWidth: activeFmt.width,
           canvasHeight: activeFmt.height,
-          pixelRatio: 1.5,
+          pixelRatio: 2,
           style: {
             borderRadius: "0px",
             transform: "scale(1)",
           },
-          filter: (node) => {
-            if (node instanceof HTMLElement && node.classList.contains("no-export")) {
-              return false;
-            }
-            return true;
-          },
+          filter: (node) => !(node instanceof HTMLElement && node.classList.contains("no-export")),
         });
 
         const base64Data = imgData.replace(/^data:image\/png;base64,/, "");
-        const slideNumberFormatted = String(i + 1).padStart(2, "0");
-        zip.file(`Folie-${slideNumberFormatted}.png`, base64Data, { base64: true });
+        const slideNum = String(i + 1).padStart(2, "0");
+        zip.file(`Folie-${slideNum}.png`, base64Data, { base64: true });
       }
 
-      if (postCopy) {
-        zip.file("Post-Text-Copy.txt", postCopy);
-      }
+      if (postCopy) zip.file("Post-Text-Copy.txt", postCopy);
 
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const downloadUrl = URL.createObjectURL(zipBlob);
       const link = document.createElement("a");
       link.href = downloadUrl;
-
-      const fileName = projectName.trim() ? `${projectName.trim()}.zip` : `CropAd-Bilder-Set-${Date.now()}.zip`;
-      link.download = fileName;
-
+      link.download = projectName.trim() ? `${projectName.trim()}.zip` : `CropAd-Bilder-Set-${Date.now()}.zip`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -603,21 +519,15 @@ export default function Home() {
           </div>
         </div>
       ) : (
-        /* SIDE-BY-SIDE HAUPTCONTAINER */
         <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden">
-          
           {/* LINKE SPALTE: Input, Prompt, Format & Branding */}
-          <div className="w-full lg:w-[460px] h-full overflow-y-auto border-r border-zinc-800/80 bg-zinc-950/70 p-6 flex flex-col space-y-5 shrink-0">
-            
-            {/* Header / Tabs */}
+          <div className="w-full lg:w-[440px] h-full overflow-y-auto border-r border-zinc-800/80 bg-zinc-950/70 p-6 flex flex-col space-y-5 shrink-0">
             <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
               <div className="flex items-center gap-1 bg-zinc-900/80 p-1 rounded-xl border border-zinc-800">
                 <button
                   onClick={() => setActiveConfigTab("text")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                    activeConfigTab === "text"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-zinc-400 hover:text-white"
+                    activeConfigTab === "text" ? "bg-blue-600 text-white shadow-sm" : "text-zinc-400 hover:text-white"
                   }`}
                 >
                   Inhalt & KI
@@ -625,9 +535,7 @@ export default function Home() {
                 <button
                   onClick={() => setActiveConfigTab("design")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                    activeConfigTab === "design"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-zinc-400 hover:text-white"
+                    activeConfigTab === "design" ? "bg-blue-600 text-white shadow-sm" : "text-zinc-400 hover:text-white"
                   }`}
                 >
                   Design & CI
@@ -635,18 +543,14 @@ export default function Home() {
                 <button
                   onClick={() => setActiveConfigTab("brand")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                    activeConfigTab === "brand"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-zinc-400 hover:text-white"
+                    activeConfigTab === "brand" ? "bg-blue-600 text-white shadow-sm" : "text-zinc-400 hover:text-white"
                   }`}
                 >
                   Branding
                 </button>
               </div>
 
-              <span className="text-[11px] font-mono text-zinc-400">
-                {wordCount} Wörter
-              </span>
+              <span className="text-[11px] font-mono text-zinc-400">{wordCount} Wörter</span>
             </div>
 
             {/* TAB 1: INHALT & PROMPT */}
@@ -673,7 +577,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* KI-Anweisungen */}
                 <div className="space-y-1.5">
                   <label className="text-xs text-zinc-400 flex items-center gap-1.5">
                     <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
@@ -688,7 +591,6 @@ export default function Home() {
                   />
                 </div>
 
-                {/* Folienanzahl Slider */}
                 <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/40 border border-zinc-800/60">
                   <span className="text-xs text-zinc-300">
                     Folien: <strong className="text-white font-mono">{numSlides}</strong>
@@ -703,7 +605,6 @@ export default function Home() {
                   />
                 </div>
 
-                {/* Format-Auswahl */}
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Ziel-Format</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -726,25 +627,20 @@ export default function Home() {
               </div>
             )}
 
-            {/* TAB 2: DESIGN & SCHRIFTEN (VOLL INTEGRIERT MIT ASSETS) */}
+            {/* TAB 2: DESIGN & SCHRIFTEN */}
             {activeConfigTab === "design" && (
               <div className="space-y-4 animate-in fade-in duration-150">
-                {/* Typografie */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
                       <Type className="w-3.5 h-3.5 text-blue-400" />
                       Typografie & Schriften
                     </label>
-                    <Link
-                      href="/assets"
-                      className="text-[10px] text-blue-400 hover:underline flex items-center gap-1"
-                    >
+                    <Link href="/assets" className="text-[10px] text-blue-400 hover:underline flex items-center gap-1">
                       Assets verwalten <ExternalLink className="w-2.5 h-2.5" />
                     </Link>
                   </div>
 
-                  {/* Standard-Schriften */}
                   <div className="grid grid-cols-2 gap-2">
                     {FONT_PRESETS.map((f) => (
                       <button
@@ -762,7 +658,6 @@ export default function Home() {
                     ))}
                   </div>
 
-                  {/* Eigene Schriften aus der Asset-Bibliothek */}
                   {savedFonts.length > 0 && (
                     <div className="pt-2 space-y-1.5">
                       <span className="text-[10px] text-zinc-400 uppercase font-semibold block">
@@ -782,10 +677,7 @@ export default function Home() {
                                   : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 text-zinc-300"
                               }`}
                             >
-                              <span
-                                className="text-xs truncate"
-                                style={{ fontFamily: `'${f.name}', sans-serif` }}
-                              >
+                              <span className="text-xs truncate" style={{ fontFamily: `'${f.name}', sans-serif` }}>
                                 {f.fileName}
                               </span>
                               {isActive && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
@@ -797,7 +689,6 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Farben & Brand-Kits */}
                 <div className="space-y-3 pt-3 border-t border-zinc-800/60">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -820,9 +711,7 @@ export default function Home() {
                             key={p.name}
                             onClick={() => handleSelectPreset(p)}
                             className={`p-2 rounded-xl border text-left transition flex items-center gap-2 ${
-                              theme.name === p.name
-                                ? "border-blue-500 bg-zinc-800/80"
-                                : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
+                              theme.name === p.name ? "border-blue-500 bg-zinc-800/80" : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
                             }`}
                           >
                             <div
@@ -847,16 +736,11 @@ export default function Home() {
                                 key={p.name}
                                 onClick={() => handleSelectPreset(p)}
                                 className={`p-2 rounded-xl border flex items-center justify-between cursor-pointer transition ${
-                                  theme.name === p.name
-                                    ? "border-blue-500 bg-zinc-800/80"
-                                    : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
+                                  theme.name === p.name ? "border-blue-500 bg-zinc-800/80" : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
                                 }`}
                               >
                                 <span className="text-xs text-zinc-200 truncate">{p.name}</span>
-                                <button
-                                  onClick={(e) => handleDeleteTheme(e, p.name)}
-                                  className="p-1 text-zinc-400 hover:text-red-400"
-                                >
+                                <button onClick={(e) => handleDeleteTheme(e, p.name)} className="p-1 text-zinc-400 hover:text-red-400">
                                   <Trash2 className="w-3 h-3" />
                                 </button>
                               </div>
@@ -1007,7 +891,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Generieren Button */}
             <div className="mt-auto pt-4 border-t border-zinc-800/80">
               <button
                 onClick={handleGenerate}
@@ -1036,17 +919,14 @@ export default function Home() {
                 <Layers className="w-10 h-10 stroke-1 text-zinc-600" />
                 <h3 className="text-sm font-semibold text-zinc-400">Kein Karussell aktiv</h3>
                 <p className="text-xs max-w-sm">
-                  Füge links deinen Text ein und klicke auf „Generieren“, um deine Folien hier interaktiv zu bearbeiten und zu exportieren.
+                  Füge links deinen Text ein und klicke auf „Generieren“, um deine Folien interaktiv zu bearbeiten.
                 </p>
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Export & Werkzeug-Leiste */}
                 <div className="flex flex-wrap items-center justify-between gap-3 bg-zinc-900/50 p-3 rounded-2xl border border-zinc-800">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-white pl-1">
-                      Editor ({slides.length})
-                    </span>
+                    <span className="text-xs font-bold text-white pl-1">Editor ({slides.length})</span>
                     <div className="flex items-center bg-zinc-950 border border-zinc-700/60 rounded-xl px-2.5 py-1.5 focus-within:border-blue-500 transition">
                       <input
                         type="text"
@@ -1086,8 +966,8 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Folien-Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {/* NORMIERTES GRID: Feste Kartenbreite, die sich auf Widescreens sauber als Galerie anordnet */}
+                <div className="flex flex-wrap gap-6 justify-start items-start">
                   {slides.map((slide, idx) => {
                     const currentLayout: LayoutType = slide.layoutType || (idx === 0 ? "cover" : idx === slides.length - 1 ? "cta" : "statement");
 
@@ -1099,8 +979,8 @@ export default function Home() {
                         }}
                         onDragOver={(e) => handleDragOver(e, idx)}
                         onDrop={() => handleDrop(idx)}
-                        className={`relative group rounded-2xl flex flex-col justify-between shadow-2xl transition border ${
-                          isStory ? "p-8 space-y-6" : "p-5 space-y-3"
+                        className={`relative group rounded-2xl flex flex-col justify-between shadow-2xl transition border overflow-hidden shrink-0 ${activeFormatObj.cardWidth} ${
+                          isStory ? "p-6 space-y-4" : "p-4 sm:p-5 space-y-2.5"
                         } ${
                           draggedIndex === idx
                             ? "opacity-40 border-dashed border-blue-500 scale-95"
@@ -1112,8 +992,16 @@ export default function Home() {
                           fontFamily: activeFontFamily,
                         }}
                       >
+                        {/* HERO HINTERGRUND-BILD LAYER */}
+                        {currentLayout === "hero" && slide.imageUrl && (
+                          <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+                            <img src={slide.imageUrl} alt="Hero Background" className="w-full h-full object-cover opacity-35" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/70 to-zinc-950/20" />
+                          </div>
+                        )}
+
                         {/* Hover-Aktionsleiste */}
-                        <div className="no-export absolute -top-3.5 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-30">
+                        <div className="no-export absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-30">
                           <button
                             onClick={() => moveSlide(idx, "left")}
                             disabled={idx === 0}
@@ -1139,9 +1027,9 @@ export default function Home() {
                           </button>
                         </div>
 
-                        {/* Slide-Header */}
-                        <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase font-sans shrink-0">
-                          <div className="flex items-center gap-1.5">
+                        {/* Slide Header */}
+                        <div className="relative z-10 flex justify-between items-center text-[10px] font-semibold tracking-wider uppercase font-sans shrink-0">
+                          <div className="flex items-center gap-1">
                             <div
                               draggable
                               onDragStart={() => handleDragStart(idx)}
@@ -1155,7 +1043,7 @@ export default function Home() {
                                 type="text"
                                 value={slide.tag || ""}
                                 onChange={(e) => updateSlideField(idx, "tag", e.target.value)}
-                                className="px-1.5 py-0.5 rounded font-mono text-[9px] focus:outline-none w-16 bg-transparent"
+                                className="px-1.5 py-0.5 rounded font-mono text-[9px] focus:outline-none w-14 bg-transparent"
                                 style={{
                                   backgroundColor: `${theme.accent}20`,
                                   color: theme.accent,
@@ -1163,49 +1051,45 @@ export default function Home() {
                               />
                             )}
 
-                            {/* Layout-Switcher */}
                             <select
                               value={currentLayout}
                               onChange={(e) => updateSlideField(idx, "layoutType", e.target.value)}
-                              className="no-export bg-zinc-900 border border-zinc-700/80 rounded px-1.5 py-0.5 text-[10px] text-zinc-300 focus:outline-none cursor-pointer"
+                              className="no-export bg-zinc-900 border border-zinc-700/80 rounded px-1.5 py-0.5 text-[9px] text-zinc-300 focus:outline-none cursor-pointer"
                             >
-                              <option value="cover">Cover</option>
-                              <option value="statement">Statement</option>
-                              <option value="bullets">Liste</option>
-                              <option value="quote">Zitat</option>
-                              <option value="cta">CTA</option>
+                              <option value="cover">📐 Cover / Hook</option>
+                              <option value="hero">📐 Hero Cover</option>
+                              <option value="statement">📐 Statement</option>
+                              <option value="splitscreen">📐 Splitscreen 50/50</option>
+                              <option value="bigstat">📐 Big Stat / Metrik</option>
+                              <option value="step">📐 Step-by-Step</option>
+                              <option value="bullets">📐 Liste / Steps</option>
+                              <option value="quote">📐 Zitat</option>
+                              <option value="cta">📐 Call to Action</option>
                             </select>
 
-                            {/* Bild/Logo-Button: Öffnet den Asset-Picker Dialog */}
                             <button
                               onClick={() => setAssetPickerSlideIdx(idx)}
                               title="Logo oder Grafik aus Bibliothek wählen"
                               className="no-export p-1 rounded hover:bg-zinc-800/80 text-zinc-400 hover:text-blue-400 transition"
                             >
-                              <ImageIcon className="w-3.5 h-3.5" />
+                              <ImageIcon className="w-3 h-3" />
                             </button>
                           </div>
 
-                          <span className="font-mono text-xs select-none" style={{ color: theme.subtext }}>
+                          <span className="font-mono text-[11px] select-none" style={{ color: theme.subtext }}>
                             {idx + 1} / {slides.length}
                           </span>
                         </div>
 
-                        {/* Folieninhalt mit Bild-Slot */}
-                        <div className="my-auto w-full overflow-hidden flex flex-col justify-center space-y-2.5">
-                          
-                          {/* BILD-CONTAINER */}
-                          {slide.imageUrl && (
-                            <div className="relative w-full max-h-32 rounded-xl overflow-hidden border border-zinc-700/40 bg-zinc-950/40 flex items-center justify-center shrink-0">
-                              <img
-                                src={slide.imageUrl}
-                                alt="Slide Asset"
-                                className="w-full h-full object-contain max-h-32 p-1"
-                              />
+                        {/* Slide Body */}
+                        <div className="relative z-10 my-auto w-full overflow-hidden flex flex-col justify-center space-y-2">
+                          {slide.imageUrl && currentLayout !== "splitscreen" && currentLayout !== "hero" && (
+                            <div className="relative w-full max-h-24 rounded-xl overflow-hidden border border-zinc-700/40 bg-zinc-950/40 flex items-center justify-center shrink-0">
+                              <img src={slide.imageUrl} alt="Slide Asset" className="w-full h-full object-contain max-h-24 p-1" />
                               <button
                                 onClick={() => removeSlideImage(idx)}
                                 title="Bild entfernen"
-                                className="no-export absolute top-1 right-1 p-1 rounded-full bg-zinc-900/80 hover:bg-red-600 text-zinc-300 hover:text-white transition"
+                                className="no-export absolute top-1 right-1 p-1 rounded-full bg-zinc-900/80 hover:bg-red-600 text-zinc-300 transition"
                               >
                                 <X className="w-3 h-3" />
                               </button>
@@ -1216,7 +1100,7 @@ export default function Home() {
                           {currentLayout === "cover" && (
                             <div className={`text-center px-1 ${isStory ? "space-y-4" : "space-y-2"}`}>
                               <div
-                                className="inline-block px-2.5 py-0.5 rounded-full text-[9px] font-semibold tracking-widest uppercase border font-sans"
+                                className="inline-block px-2 py-0.5 rounded-full text-[9px] font-semibold tracking-widest uppercase border font-sans"
                                 style={{ borderColor: `${theme.accent}40`, color: theme.accent, backgroundColor: `${theme.accent}15` }}
                               >
                                 {authorName}
@@ -1225,8 +1109,8 @@ export default function Home() {
                                 rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                className={`w-full bg-transparent font-extrabold leading-tight text-center focus:outline-none rounded p-1 transition resize-none overflow-hidden ${
-                                  isStory ? "text-2xl" : "text-base sm:text-lg"
+                                className={`w-full bg-transparent font-extrabold leading-tight text-center focus:outline-none rounded p-0.5 resize-none overflow-hidden ${
+                                  isStory ? "text-xl" : "text-base"
                                 }`}
                                 style={{ color: theme.text }}
                               />
@@ -1234,108 +1118,270 @@ export default function Home() {
                                 rows={2}
                                 value={slide.content}
                                 onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                className={`w-full bg-transparent leading-relaxed text-center focus:outline-none rounded p-1 transition resize-none overflow-hidden ${
-                                  isStory ? "text-sm" : "text-[11px]"
+                                className={`w-full bg-transparent leading-relaxed text-center focus:outline-none rounded p-0.5 resize-none overflow-hidden ${
+                                  isStory ? "text-xs" : "text-[11px]"
                                 }`}
                                 style={{ color: theme.subtext }}
                               />
                             </div>
                           )}
 
-                          {/* 2. BULLETS LAYOUT */}
-                          {currentLayout === "bullets" && (
-                            <div className="space-y-2">
+                          {/* 2. HERO COVER */}
+                          {currentLayout === "hero" && (
+                            <div className={`text-center px-1 relative ${isStory ? "space-y-4" : "space-y-2"}`}>
+                              {!slide.imageUrl && (
+                                <button
+                                  onClick={() => setAssetPickerSlideIdx(idx)}
+                                  className="no-export mx-auto mb-1 px-2.5 py-1 rounded-xl border border-dashed border-zinc-700 hover:border-blue-500 text-zinc-400 hover:text-blue-400 flex items-center justify-center gap-1.5 text-[10px] transition"
+                                >
+                                  <ImageIcon className="w-3 h-3" />
+                                  <span>Hintergrundbild wählen</span>
+                                </button>
+                              )}
+                              <div
+                                className="inline-block px-2 py-0.5 rounded-full text-[9px] font-semibold tracking-widest uppercase border font-sans"
+                                style={{ borderColor: `${theme.accent}50`, color: theme.accent, backgroundColor: `${theme.accent}20` }}
+                              >
+                                {slide.tag || "HERO CASE"}
+                              </div>
                               <textarea
                                 rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                className="w-full bg-transparent font-bold text-sm leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
+                                placeholder="Hook-Headline..."
+                                className={`w-full bg-transparent font-black leading-tight text-center focus:outline-none rounded p-0.5 resize-none overflow-hidden ${
+                                  isStory ? "text-xl" : "text-base"
+                                }`}
+                                style={{ color: theme.text }}
+                              />
+                              <textarea
+                                rows={2}
+                                value={slide.content}
+                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                placeholder="Einstiegssatz..."
+                                className="w-full bg-transparent text-[11px] text-center leading-relaxed focus:outline-none rounded p-0.5 resize-none overflow-hidden"
+                                style={{ color: theme.subtext }}
+                              />
+                            </div>
+                          )}
+
+                          {/* 3. SPLITSCREEN 50/50 */}
+                          {currentLayout === "splitscreen" && (
+                            <div className="flex flex-col justify-between gap-2 py-1">
+                              <div
+                                className={`relative w-full rounded-xl overflow-hidden border border-zinc-700/50 bg-zinc-950/50 flex items-center justify-center shrink-0 ${
+                                  isStory ? "h-36" : selectedFormat === "1_1" ? "h-24" : "h-28"
+                                }`}
+                              >
+                                {slide.imageUrl ? (
+                                  <>
+                                    <img src={slide.imageUrl} alt="Split Asset" className="w-full h-full object-cover" />
+                                    <button
+                                      onClick={() => removeSlideImage(idx)}
+                                      className="no-export absolute top-1 right-1 p-1 rounded-full bg-zinc-900/80 hover:bg-red-600 text-zinc-300 transition"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    onClick={() => setAssetPickerSlideIdx(idx)}
+                                    className="no-export flex flex-col items-center justify-center text-zinc-500 hover:text-blue-400 gap-1 text-[10px] w-full h-full transition"
+                                  >
+                                    <ImageIcon className="w-4 h-4" />
+                                    <span>Bild / Grafik wählen</span>
+                                  </button>
+                                )}
+                              </div>
+                              <div className="space-y-1">
+                                <textarea
+                                  rows={1}
+                                  value={slide.headline}
+                                  onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                  placeholder="Feature Kernaussage..."
+                                  className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
+                                  style={{ color: theme.text }}
+                                />
+                                <textarea
+                                  rows={2}
+                                  value={slide.content}
+                                  onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                  placeholder="Erklärung..."
+                                  className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                  style={{ color: theme.subtext }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 4. BIG STAT */}
+                          {currentLayout === "bigstat" && (
+                            <div className="text-center px-1 space-y-1 my-auto">
+                              <input
+                                type="text"
+                                value={slide.statNumber || "+340%"}
+                                onChange={(e) => updateSlideField(idx, "statNumber", e.target.value)}
+                                placeholder="+10x / 85%"
+                                className="w-full bg-transparent font-black tracking-tight text-center text-3xl sm:text-4xl focus:outline-none font-mono py-1"
+                                style={{ color: theme.accent }}
+                              />
+                              <textarea
+                                rows={2}
+                                value={slide.headline}
+                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                placeholder="Was bedeutet diese Kennzahl?"
+                                className="w-full bg-transparent font-bold text-xs text-center leading-snug focus:outline-none resize-none overflow-hidden"
+                                style={{ color: theme.text }}
+                              />
+                              <textarea
+                                rows={2}
+                                value={slide.content}
+                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                placeholder="Kontext oder Hebel..."
+                                className="w-full bg-transparent text-[10px] text-center leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                style={{ color: theme.subtext }}
+                              />
+                            </div>
+                          )}
+
+                          {/* 5. STEP-BY-STEP (Zahl 100% sichtbar) */}
+                          {currentLayout === "step" && (
+                            <div className="relative space-y-1.5 my-auto">
+                              <div
+                                className="absolute right-2 top-0 text-4xl font-black font-mono opacity-20 select-none pointer-events-none"
+                                style={{ color: theme.accent }}
+                              >
+                                {String(slide.slideNumber).padStart(2, "0")}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={slide.stepBadge || `SCHRITT ${slide.slideNumber}`}
+                                  onChange={(e) => updateSlideField(idx, "stepBadge", e.target.value)}
+                                  className="px-2 py-0.5 rounded font-mono text-[9px] font-bold tracking-wider uppercase focus:outline-none bg-transparent border"
+                                  style={{ borderColor: `${theme.accent}40`, color: theme.accent }}
+                                />
+                              </div>
+                              <textarea
+                                rows={2}
+                                value={slide.headline}
+                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                placeholder="Schritt-Aktion..."
+                                className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none resize-none overflow-hidden pr-8"
                                 style={{ color: theme.text }}
                               />
                               <div
-                                className="p-2.5 rounded-xl border border-dashed"
+                                className="p-2 rounded-xl border border-dashed"
+                                style={{ borderColor: `${theme.accent}30`, backgroundColor: `${theme.accent}08` }}
+                              >
+                                <textarea
+                                  rows={2}
+                                  value={slide.content}
+                                  onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                  placeholder="Anleitung und Ausführung..."
+                                  className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                  style={{ color: theme.subtext }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 6. BULLETS */}
+                          {currentLayout === "bullets" && (
+                            <div className="space-y-1.5">
+                              <textarea
+                                rows={2}
+                                value={slide.headline}
+                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
+                                style={{ color: theme.text }}
+                              />
+                              <div
+                                className="p-2 rounded-xl border border-dashed"
                                 style={{ borderColor: `${theme.accent}40`, backgroundColor: `${theme.accent}08` }}
                               >
                                 <textarea
                                   rows={3}
                                   value={slide.content}
                                   onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                  className="w-full bg-transparent text-[11px] leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                  className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
                                   style={{ color: theme.text }}
                                 />
                               </div>
                             </div>
                           )}
 
-                          {/* 3. QUOTE LAYOUT */}
+                          {/* 7. QUOTE (Icon 100% sichtbar) */}
                           {currentLayout === "quote" && (
-                            <div className="relative space-y-1.5">
-                              <Quote className="w-6 h-6 opacity-20 absolute -top-3 -left-1 select-none" style={{ color: theme.accent }} />
+                            <div className="relative space-y-1.5 my-auto">
+                              <Quote className="w-5 h-5 opacity-30 select-none shrink-0" style={{ color: theme.accent }} />
                               <textarea
                                 rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                className="w-full bg-transparent italic font-bold text-sm leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
+                                placeholder="„Kernaussage oder Zitat...“"
+                                className="w-full bg-transparent italic font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
                                 style={{ color: theme.text }}
                               />
                               <textarea
                                 rows={2}
                                 value={slide.content}
                                 onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                className="w-full bg-transparent text-[11px] leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                placeholder="— Autor / Quelle"
+                                className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
                                 style={{ color: theme.accent }}
                               />
                             </div>
                           )}
 
-                          {/* 4. CTA LAYOUT */}
+                          {/* 8. CTA */}
                           {currentLayout === "cta" && (
-                            <div className="text-center px-1 space-y-2">
-                              <Megaphone className="mx-auto w-5 h-5 opacity-80" style={{ color: theme.accent }} />
+                            <div className="text-center px-1 space-y-1.5">
+                              <Megaphone className="mx-auto w-4 h-4 opacity-80" style={{ color: theme.accent }} />
                               <textarea
                                 rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                className="w-full bg-transparent font-bold text-sm text-center leading-snug focus:outline-none resize-none overflow-hidden"
+                                className="w-full bg-transparent font-bold text-xs text-center leading-snug focus:outline-none resize-none overflow-hidden"
                                 style={{ color: theme.text }}
                               />
                               <textarea
                                 rows={2}
                                 value={slide.content}
                                 onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                className="w-full bg-transparent text-[11px] text-center leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                className="w-full bg-transparent text-[10px] text-center leading-relaxed focus:outline-none resize-none overflow-hidden"
                                 style={{ color: theme.subtext }}
                               />
                             </div>
                           )}
 
-                          {/* 5. STATEMENT LAYOUT */}
+                          {/* 9. STATEMENT */}
                           {currentLayout === "statement" && (
-                            <div className="space-y-2">
+                            <div className="space-y-1.5">
                               <textarea
                                 rows={2}
                                 value={slide.headline}
                                 onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                className="w-full bg-transparent font-bold text-sm leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
+                                className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
                                 style={{ color: theme.text }}
                               />
                               <textarea
                                 rows={3}
                                 value={slide.content}
                                 onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                className="w-full bg-transparent text-[11px] leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
                                 style={{ color: theme.subtext }}
                               />
                             </div>
                           )}
                         </div>
 
-                        {/* Slide-Footer */}
+                        {/* Slide Footer */}
                         <div
-                          className="pt-2 border-t border-zinc-800/40 flex items-center justify-between text-[9px] font-sans shrink-0"
+                          className="relative z-10 pt-2 border-t border-zinc-800/40 flex items-center justify-between text-[9px] font-sans shrink-0"
                           style={{ color: theme.subtext }}
                         >
-                          <span className="truncate max-w-[130px] font-medium">
+                          <span className="truncate max-w-[120px] font-medium">
                             {authorName} <span className="opacity-60">{authorHandle}</span>
                           </span>
                           <span className="font-mono">Swipe ➔</span>
@@ -1345,7 +1391,7 @@ export default function Home() {
                   })}
                 </div>
 
-                {/* Post Copy Begleittext */}
+                {/* Post Copy */}
                 {postCopy && (
                   <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 space-y-2.5">
                     <div className="flex justify-between items-center">
@@ -1373,7 +1419,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ASSET-PICKER MODAL (Wird geöffnet beim Klick auf Bild-Symbol auf einer Folie) */}
+      {/* ASSET-PICKER MODAL */}
       {assetPickerSlideIdx !== null && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-2xl w-full p-6 space-y-5 shadow-2xl animate-in zoom-in-95 duration-150">
@@ -1395,7 +1441,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Gespeicherte Assets aus Workspace */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
@@ -1438,7 +1483,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* Direkter File Upload von Festplatte */}
             <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
               <span className="text-xs text-zinc-400">Oder von Festplatte wählen:</span>
               <label className="bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium px-4 py-2 rounded-xl cursor-pointer transition flex items-center gap-1.5 border border-zinc-700">
