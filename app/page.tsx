@@ -193,7 +193,7 @@ export default function Home() {
     document.head.appendChild(styleEl);
   };
 
-  useEffect(() => {
+useEffect(() => {
     try {
       const storedThemes = localStorage.getItem("cropad_custom_themes");
       if (storedThemes) setSavedThemes(JSON.parse(storedThemes));
@@ -208,7 +208,17 @@ export default function Home() {
       const storedAssets = localStorage.getItem("cropad_custom_assets");
       if (storedAssets) setSavedAssets(JSON.parse(storedAssets));
 
-      // Prüfen, ob ein Projekt aus dem Scheduler / Archiv geöffnet werden soll
+      // 1. Workspace-Defaults aus Einstellungen laden
+      const storedDefaults = localStorage.getItem("cropad_workspace_settings");
+      if (storedDefaults) {
+        const defs = JSON.parse(storedDefaults);
+        if (defs.authorName) setAuthorName(defs.authorName);
+        if (defs.authorHandle) setAuthorHandle(defs.authorHandle);
+        if (defs.defaultFormat) setSelectedFormat(defs.defaultFormat);
+        if (typeof defs.showTagsDefault === "boolean") setShowTags(defs.showTagsDefault);
+      }
+
+      // 2. Projekt aus Scheduler / Archiv laden (falls aktiv)
       const activeProjId = localStorage.getItem("cropad_active_project_id");
       if (activeProjId) {
         const storedArchive = localStorage.getItem("cropad_projects_archive");
