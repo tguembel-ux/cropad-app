@@ -29,6 +29,8 @@ import {
   ImageIcon,
   X,
   ExternalLink,
+  Tag,
+  Save,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import jsPDF from "jspdf";
@@ -77,9 +79,9 @@ const FONT_PRESETS = [
 ];
 
 const AD_FORMATS = [
-  { id: "4_5", name: "LinkedIn Karussell (4:5)", desc: "1080 × 1350 px (PDF / PNG)", aspect: "aspect-[4/5]", width: 1080, height: 1350, cardWidth: "w-[305px]" },
-  { id: "1_1", name: "Square Post (1:1)", desc: "1080 × 1080 px (Feed)", aspect: "aspect-square", width: 1080, height: 1080, cardWidth: "w-[305px]" },
-  { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels / Stories)", aspect: "aspect-[9/16]", width: 1080, height: 1920, cardWidth: "w-[260px]" },
+  { id: "4_5", name: "LinkedIn Karussell (4:5)", desc: "1080 × 1350 px (PDF / PNG)", aspect: "aspect-[4/5]", width: 1080, height: 1350, cardWidth: "w-[310px]" },
+  { id: "1_1", name: "Square Post (1:1)", desc: "1080 × 1080 px (Feed)", aspect: "aspect-square", width: 1080, height: 1080, cardWidth: "w-[310px]" },
+  { id: "9_16", name: "Story / Slide (9:16)", desc: "1080 × 1920 px (Reels / Stories)", aspect: "aspect-[9/16]", width: 1080, height: 1920, cardWidth: "w-[270px]" },
 ];
 
 export type LayoutType =
@@ -133,6 +135,9 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingZip, setExportingZip] = useState(false);
+  const [savingProject, setSavingProject] = useState(false);
+  const [projectSavedNotice, setProjectSavedNotice] = useState(false);
+
   const [content, setContent] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
   const [numSlides, setNumSlides] = useState(5);
@@ -150,7 +155,10 @@ export default function Home() {
   const [assetPickerSlideIdx, setAssetPickerSlideIdx] = useState<number | null>(null);
   const [selectedFont, setSelectedFont] = useState(FONT_PRESETS[0].id);
 
+  // Projekt-Verwaltung State
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("CropAd-Projekt");
+
   const [showTags, setShowTags] = useState(true);
   const [authorName, setAuthorName] = useState("CropAd Creator");
   const [authorHandle, setAuthorHandle] = useState("@cropad");
@@ -199,6 +207,36 @@ export default function Home() {
 
       const storedAssets = localStorage.getItem("cropad_custom_assets");
       if (storedAssets) setSavedAssets(JSON.parse(storedAssets));
+
+      // Prüfen, ob ein Projekt aus dem Scheduler / Archiv geöffnet werden soll
+      const activeProjId = localStorage.getItem("cropad_active_project_id");
+      if (activeProjId) {
+        const storedArchive = localStorage.getItem("cropad_projects_archive");
+        if (storedArchive) {
+          const archive = JSON.parse(storedArchive);
+          const found = archive.find((p: any) => p.id === activeProjId);
+          if (found) {
+            setCurrentProjectId(found.id);
+            setProjectName(found.name);
+            setSlides(found.slides || []);
+            setPostCopy(found.postCopy || "");
+            if (found.selectedFormat) setSelectedFormat(found.selectedFormat);
+            if (found.theme) {
+              setTheme(found.theme);
+              setHexInputs({
+                bg: found.theme.bg,
+                accent: found.theme.accent,
+                text: found.theme.text,
+                subtext: found.theme.subtext,
+              });
+            }
+            if (found.selectedFont) setSelectedFont(found.selectedFont);
+            if (found.authorName) setAuthorName(found.authorName);
+            if (found.authorHandle) setAuthorHandle(found.authorHandle);
+            if (typeof found.showTags === "boolean") setShowTags(found.showTags);
+          }
+        }
+      }
     } catch (err) {
       console.error("Fehler beim Laden der Brand-Assets:", err);
     }
@@ -265,6 +303,56 @@ export default function Home() {
     try {
       localStorage.setItem("cropad_custom_themes", JSON.stringify(updated));
     } catch {}
+  };
+
+  // PROJEKT IN ARCHIV SICHERN
+  const handleSaveProject = () => {
+    if (slides.length === 0) {
+      alert("Es gibt noch keine Folien zum Speichern.");
+      return;
+    }
+
+    setSavingProject(true);
+    try {
+      const stored = localStorage.getItem("cropad_projects_archive");
+      const archive = stored ? JSON.parse(stored) : [];
+
+      const pId = currentProjectId || `proj_${Date.now()}`;
+      const now = new Date().toISOString();
+
+      const existing = archive.find((p: any) => p.id === pId);
+
+      const projectPayload = {
+        id: pId,
+        name: projectName.trim() || "Unbenanntes Karussell",
+        createdAt: existing ? existing.createdAt : now,
+        updatedAt: now,
+        status: existing ? existing.status : "draft",
+        scheduledDate: existing ? existing.scheduledDate : undefined,
+        scheduledTime: existing ? existing.scheduledTime : undefined,
+        slides,
+        postCopy,
+        selectedFormat,
+        theme,
+        selectedFont,
+        showTags,
+        authorName,
+        authorHandle,
+      };
+
+      const updatedArchive = [projectPayload, ...archive.filter((p: any) => p.id !== pId)];
+      localStorage.setItem("cropad_projects_archive", JSON.stringify(updatedArchive));
+      localStorage.setItem("cropad_active_project_id", pId);
+      setCurrentProjectId(pId);
+
+      setProjectSavedNotice(true);
+      setTimeout(() => setProjectSavedNotice(false), 2000);
+    } catch (err) {
+      console.error("Fehler beim Sichern des Projekts:", err);
+      alert("Speicherfehler im Browser-Cache.");
+    } finally {
+      setSavingProject(false);
+    }
   };
 
   const assignAssetToSlide = (slideIdx: number, dataUrl: string) => {
@@ -392,7 +480,6 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // NORMALTER EXPORT: Rendert unabhängig von Bildschirmauflösung immer pixelgenau
   const handleExportPDF = async () => {
     if (slides.length === 0) return;
     setExportingPdf(true);
@@ -496,6 +583,7 @@ export default function Home() {
   const activeFormatObj = AD_FORMATS.find((f) => f.id === selectedFormat) || AD_FORMATS[0];
   const activeFontFamily = getActiveFontFamily();
   const isStory = selectedFormat === "9_16";
+  const isSquare = selectedFormat === "1_1";
 
   return (
     <div className="h-full flex flex-col bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
@@ -919,7 +1007,7 @@ export default function Home() {
                 <Layers className="w-10 h-10 stroke-1 text-zinc-600" />
                 <h3 className="text-sm font-semibold text-zinc-400">Kein Karussell aktiv</h3>
                 <p className="text-xs max-w-sm">
-                  Füge links deinen Text ein und klicke auf „Generieren“, um deine Folien interaktiv zu bearbeiten.
+                  Füge links deinen Text ein und klicke auf „Generieren“, oder öffne ein bestehendes Projekt aus dem Scheduler.
                 </p>
               </div>
             ) : (
@@ -927,16 +1015,31 @@ export default function Home() {
                 <div className="flex flex-wrap items-center justify-between gap-3 bg-zinc-900/50 p-3 rounded-2xl border border-zinc-800">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-white pl-1">Editor ({slides.length})</span>
+                    
+                    {/* Projektname & Speicher-Button */}
                     <div className="flex items-center bg-zinc-950 border border-zinc-700/60 rounded-xl px-2.5 py-1.5 focus-within:border-blue-500 transition">
                       <input
                         type="text"
                         value={projectName}
                         onChange={(e) => setProjectName(e.target.value)}
                         placeholder="Projektname..."
-                        className="bg-transparent text-xs text-zinc-200 focus:outline-none w-28 sm:w-36"
+                        className="bg-transparent text-xs text-zinc-200 focus:outline-none w-28 sm:w-40"
                       />
-                      <span className="text-[10px] text-zinc-400 font-mono ml-1">.pdf/.zip</span>
                     </div>
+
+                    <button
+                      onClick={handleSaveProject}
+                      disabled={savingProject}
+                      title="Projekt im Archiv sichern"
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1.5 transition border ${
+                        projectSavedNotice
+                          ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+                          : "bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700"
+                      }`}
+                    >
+                      {projectSavedNotice ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Save className="w-3.5 h-3.5 text-blue-400" />}
+                      <span>{projectSavedNotice ? "Gespeichert!" : "Speichern"}</span>
+                    </button>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -966,432 +1069,461 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* NORMIERTES GRID: Feste Kartenbreite, die sich auf Widescreens sauber als Galerie anordnet */}
-                <div className="flex flex-wrap gap-6 justify-start items-start">
+                {/* NORMIERTE KARTENLISTE */}
+                <div className="flex flex-wrap gap-7 justify-start items-start">
                   {slides.map((slide, idx) => {
                     const currentLayout: LayoutType = slide.layoutType || (idx === 0 ? "cover" : idx === slides.length - 1 ? "cta" : "statement");
 
                     return (
-                      <div
-                        key={idx}
-                        ref={(el) => {
-                          slideRefs.current[idx] = el;
-                        }}
-                        onDragOver={(e) => handleDragOver(e, idx)}
-                        onDrop={() => handleDrop(idx)}
-                        className={`relative group rounded-2xl flex flex-col justify-between shadow-2xl transition border overflow-hidden shrink-0 ${activeFormatObj.cardWidth} ${
-                          isStory ? "p-6 space-y-4" : "p-4 sm:p-5 space-y-2.5"
-                        } ${
-                          draggedIndex === idx
-                            ? "opacity-40 border-dashed border-blue-500 scale-95"
-                            : "border-zinc-700/40 hover:border-zinc-500/60"
-                        } ${activeFormatObj.aspect}`}
-                        style={{
-                          backgroundColor: theme.cardBg || theme.bg,
-                          color: theme.text,
-                          fontFamily: activeFontFamily,
-                        }}
-                      >
-                        {/* HERO HINTERGRUND-BILD LAYER */}
-                        {currentLayout === "hero" && slide.imageUrl && (
-                          <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-                            <img src={slide.imageUrl} alt="Hero Background" className="w-full h-full object-cover opacity-35" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/70 to-zinc-950/20" />
-                          </div>
-                        )}
-
-                        {/* Hover-Aktionsleiste */}
-                        <div className="no-export absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all bg-zinc-950 shadow-xl border border-zinc-700 p-1 rounded-xl z-30">
-                          <button
-                            onClick={() => moveSlide(idx, "left")}
-                            disabled={idx === 0}
-                            title="Nach links verschieben"
-                            className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300"
-                          >
-                            <ArrowLeft className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => moveSlide(idx, "right")}
-                            disabled={idx === slides.length - 1}
-                            title="Nach rechts verschieben"
-                            className="p-1 rounded-lg hover:bg-zinc-800 disabled:opacity-20 text-zinc-300"
-                          >
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => deleteSlide(idx)}
-                            title="Folie löschen"
-                            className="p-1 rounded-lg hover:bg-red-500/20 text-zinc-400 hover:text-red-400"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        {/* Slide Header */}
-                        <div className="relative z-10 flex justify-between items-center text-[10px] font-semibold tracking-wider uppercase font-sans shrink-0">
+                      <div key={idx} className={`flex flex-col gap-2 shrink-0 ${activeFormatObj.cardWidth}`}>
+                        {/* WERKZEUGLEISTE OBERHALB */}
+                        <div className="no-export flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-zinc-300 shadow-sm w-full">
                           <div className="flex items-center gap-1">
                             <div
                               draggable
                               onDragStart={() => handleDragStart(idx)}
-                              className="no-export cursor-grab active:cursor-grabbing p-1 text-zinc-400 hover:text-zinc-100"
+                              className="cursor-grab active:cursor-grabbing p-1 text-zinc-400 hover:text-zinc-100 rounded hover:bg-zinc-800 transition"
+                              title="Folie per Drag & Drop sortieren"
                             >
                               <GripVertical className="w-3.5 h-3.5" />
                             </div>
+                            <span className="font-mono text-[10px] font-bold text-zinc-400 mr-1 select-none">
+                              #{idx + 1}
+                            </span>
+                            <button
+                              onClick={() => moveSlide(idx, "left")}
+                              disabled={idx === 0}
+                              title="Nach links verschieben"
+                              className="p-1 rounded hover:bg-zinc-800 disabled:opacity-20 text-zinc-400 hover:text-zinc-200 transition"
+                            >
+                              <ArrowLeft className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => moveSlide(idx, "right")}
+                              disabled={idx === slides.length - 1}
+                              title="Nach rechts verschieben"
+                              className="p-1 rounded hover:bg-zinc-800 disabled:opacity-20 text-zinc-400 hover:text-zinc-200 transition"
+                            >
+                              <ArrowRight className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => deleteSlide(idx)}
+                              title="Folie löschen"
+                              className="p-1 rounded hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition ml-0.5"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
 
-                            {showTags && (
+                          {showTags && (
+                            <div className="flex items-center gap-1 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800 max-w-[80px]">
+                              <Tag className="w-2.5 h-2.5 text-zinc-500 shrink-0" />
                               <input
                                 type="text"
                                 value={slide.tag || ""}
+                                placeholder="Kein Tag"
                                 onChange={(e) => updateSlideField(idx, "tag", e.target.value)}
-                                className="px-1.5 py-0.5 rounded font-mono text-[9px] focus:outline-none w-14 bg-transparent"
-                                style={{
-                                  backgroundColor: `${theme.accent}20`,
-                                  color: theme.accent,
-                                }}
+                                className="bg-transparent text-[10px] font-mono text-zinc-300 focus:outline-none w-full"
                               />
-                            )}
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => setAssetPickerSlideIdx(idx)}
+                              title="Bild/Logo für Folie wählen"
+                              className={`p-1 rounded transition border ${
+                                slide.imageUrl
+                                  ? "bg-blue-600/20 border-blue-500/40 text-blue-400"
+                                  : "border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                              }`}
+                            >
+                              <ImageIcon className="w-3.5 h-3.5" />
+                            </button>
 
                             <select
                               value={currentLayout}
                               onChange={(e) => updateSlideField(idx, "layoutType", e.target.value)}
-                              className="no-export bg-zinc-900 border border-zinc-700/80 rounded px-1.5 py-0.5 text-[9px] text-zinc-300 focus:outline-none cursor-pointer"
+                              className="bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-[10px] text-zinc-300 focus:outline-none cursor-pointer max-w-[100px] truncate"
                             >
-                              <option value="cover">📐 Cover / Hook</option>
-                              <option value="hero">📐 Hero Cover</option>
-                              <option value="statement">📐 Statement</option>
-                              <option value="splitscreen">📐 Splitscreen 50/50</option>
-                              <option value="bigstat">📐 Big Stat / Metrik</option>
-                              <option value="step">📐 Step-by-Step</option>
-                              <option value="bullets">📐 Liste / Steps</option>
-                              <option value="quote">📐 Zitat</option>
-                              <option value="cta">📐 Call to Action</option>
+                              <option value="cover">Cover</option>
+                              <option value="hero">Hero Cover</option>
+                              <option value="statement">Statement</option>
+                              <option value="splitscreen">Splitscreen</option>
+                              <option value="bigstat">Big Stat</option>
+                              <option value="step">Step-by-Step</option>
+                              <option value="bullets">Liste</option>
+                              <option value="quote">Zitat</option>
+                              <option value="cta">CTA</option>
                             </select>
-
-                            <button
-                              onClick={() => setAssetPickerSlideIdx(idx)}
-                              title="Logo oder Grafik aus Bibliothek wählen"
-                              className="no-export p-1 rounded hover:bg-zinc-800/80 text-zinc-400 hover:text-blue-400 transition"
-                            >
-                              <ImageIcon className="w-3 h-3" />
-                            </button>
                           </div>
-
-                          <span className="font-mono text-[11px] select-none" style={{ color: theme.subtext }}>
-                            {idx + 1} / {slides.length}
-                          </span>
                         </div>
 
-                        {/* Slide Body */}
-                        <div className="relative z-10 my-auto w-full overflow-hidden flex flex-col justify-center space-y-2">
-                          {slide.imageUrl && currentLayout !== "splitscreen" && currentLayout !== "hero" && (
-                            <div className="relative w-full max-h-24 rounded-xl overflow-hidden border border-zinc-700/40 bg-zinc-950/40 flex items-center justify-center shrink-0">
-                              <img src={slide.imageUrl} alt="Slide Asset" className="w-full h-full object-contain max-h-24 p-1" />
-                              <button
-                                onClick={() => removeSlideImage(idx)}
-                                title="Bild entfernen"
-                                className="no-export absolute top-1 right-1 p-1 rounded-full bg-zinc-900/80 hover:bg-red-600 text-zinc-300 transition"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
+                        {/* DIE FOLIE */}
+                        <div
+                          ref={(el) => {
+                            slideRefs.current[idx] = el;
+                          }}
+                          onDragOver={(e) => handleDragOver(e, idx)}
+                          onDrop={() => handleDrop(idx)}
+                          className={`relative rounded-2xl flex flex-col justify-between shadow-2xl transition border overflow-hidden w-full ${
+                            isStory ? "p-6" : isSquare ? "p-4 space-y-2" : "p-5 space-y-2.5"
+                          } ${
+                            draggedIndex === idx
+                              ? "opacity-40 border-dashed border-blue-500 scale-95"
+                              : "border-zinc-700/40 hover:border-zinc-500/60"
+                          } ${activeFormatObj.aspect}`}
+                          style={{
+                            backgroundColor: theme.cardBg || theme.bg,
+                            color: theme.text,
+                            fontFamily: activeFontFamily,
+                          }}
+                        >
+                          {currentLayout === "hero" && slide.imageUrl && (
+                            <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+                              <img src={slide.imageUrl} alt="Hero Background" className="w-full h-full object-cover opacity-35" />
+                              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/70 to-zinc-950/20" />
                             </div>
                           )}
 
-                          {/* 1. COVER LAYOUT */}
-                          {currentLayout === "cover" && (
-                            <div className={`text-center px-1 ${isStory ? "space-y-4" : "space-y-2"}`}>
+                          <div className="relative z-10 flex justify-between items-center text-[10px] font-semibold tracking-wider uppercase font-sans shrink-0 w-full">
+                            {showTags && slide.tag && slide.tag.trim() ? (
+                              <span
+                                className="px-2 py-0.5 rounded font-mono text-[9px] font-bold tracking-wider"
+                                style={{
+                                  backgroundColor: `${theme.accent}20`,
+                                  color: theme.accent,
+                                }}
+                              >
+                                {slide.tag.trim()}
+                              </span>
+                            ) : (
+                              <div />
+                            )}
+
+                            <span
+                              className="font-mono text-[10px] font-bold select-none px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800/80 shrink-0"
+                              style={{ color: theme.subtext }}
+                            >
+                              {String(idx + 1).padStart(2, "0")} / {String(slides.length).padStart(2, "0")}
+                            </span>
+                          </div>
+
+                          <div className="relative z-10 my-auto w-full overflow-hidden flex flex-col justify-center space-y-2">
+                            {slide.imageUrl && currentLayout !== "splitscreen" && currentLayout !== "hero" && (
                               <div
-                                className="inline-block px-2 py-0.5 rounded-full text-[9px] font-semibold tracking-widest uppercase border font-sans"
-                                style={{ borderColor: `${theme.accent}40`, color: theme.accent, backgroundColor: `${theme.accent}15` }}
+                                className={`relative w-full rounded-xl overflow-hidden border border-zinc-700/40 bg-zinc-950/40 flex items-center justify-center shrink-0 ${
+                                  isSquare ? "max-h-20" : isStory ? "max-h-36" : "max-h-24"
+                                }`}
                               >
-                                {authorName}
-                              </div>
-                              <textarea
-                                rows={2}
-                                value={slide.headline}
-                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                className={`w-full bg-transparent font-extrabold leading-tight text-center focus:outline-none rounded p-0.5 resize-none overflow-hidden ${
-                                  isStory ? "text-xl" : "text-base"
-                                }`}
-                                style={{ color: theme.text }}
-                              />
-                              <textarea
-                                rows={2}
-                                value={slide.content}
-                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                className={`w-full bg-transparent leading-relaxed text-center focus:outline-none rounded p-0.5 resize-none overflow-hidden ${
-                                  isStory ? "text-xs" : "text-[11px]"
-                                }`}
-                                style={{ color: theme.subtext }}
-                              />
-                            </div>
-                          )}
-
-                          {/* 2. HERO COVER */}
-                          {currentLayout === "hero" && (
-                            <div className={`text-center px-1 relative ${isStory ? "space-y-4" : "space-y-2"}`}>
-                              {!slide.imageUrl && (
+                                <img
+                                  src={slide.imageUrl}
+                                  alt="Slide Asset"
+                                  className={`w-full h-full object-contain p-1 ${isSquare ? "max-h-20" : isStory ? "max-h-36" : "max-h-24"}`}
+                                />
                                 <button
-                                  onClick={() => setAssetPickerSlideIdx(idx)}
-                                  className="no-export mx-auto mb-1 px-2.5 py-1 rounded-xl border border-dashed border-zinc-700 hover:border-blue-500 text-zinc-400 hover:text-blue-400 flex items-center justify-center gap-1.5 text-[10px] transition"
+                                  onClick={() => removeSlideImage(idx)}
+                                  title="Bild entfernen"
+                                  className="no-export absolute top-1.5 right-1.5 p-1 rounded-full bg-zinc-950/90 hover:bg-red-600 text-zinc-300 hover:text-white transition shadow-lg border border-zinc-700/60 z-20"
                                 >
-                                  <ImageIcon className="w-3 h-3" />
-                                  <span>Hintergrundbild wählen</span>
+                                  <X className="w-3 h-3" />
                                 </button>
-                              )}
-                              <div
-                                className="inline-block px-2 py-0.5 rounded-full text-[9px] font-semibold tracking-widest uppercase border font-sans"
-                                style={{ borderColor: `${theme.accent}50`, color: theme.accent, backgroundColor: `${theme.accent}20` }}
-                              >
-                                {slide.tag || "HERO CASE"}
                               </div>
-                              <textarea
-                                rows={2}
-                                value={slide.headline}
-                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                placeholder="Hook-Headline..."
-                                className={`w-full bg-transparent font-black leading-tight text-center focus:outline-none rounded p-0.5 resize-none overflow-hidden ${
-                                  isStory ? "text-xl" : "text-base"
-                                }`}
-                                style={{ color: theme.text }}
-                              />
-                              <textarea
-                                rows={2}
-                                value={slide.content}
-                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                placeholder="Einstiegssatz..."
-                                className="w-full bg-transparent text-[11px] text-center leading-relaxed focus:outline-none rounded p-0.5 resize-none overflow-hidden"
-                                style={{ color: theme.subtext }}
-                              />
-                            </div>
-                          )}
+                            )}
 
-                          {/* 3. SPLITSCREEN 50/50 */}
-                          {currentLayout === "splitscreen" && (
-                            <div className="flex flex-col justify-between gap-2 py-1">
-                              <div
-                                className={`relative w-full rounded-xl overflow-hidden border border-zinc-700/50 bg-zinc-950/50 flex items-center justify-center shrink-0 ${
-                                  isStory ? "h-36" : selectedFormat === "1_1" ? "h-24" : "h-28"
-                                }`}
-                              >
-                                {slide.imageUrl ? (
-                                  <>
-                                    <img src={slide.imageUrl} alt="Split Asset" className="w-full h-full object-cover" />
-                                    <button
-                                      onClick={() => removeSlideImage(idx)}
-                                      className="no-export absolute top-1 right-1 p-1 rounded-full bg-zinc-900/80 hover:bg-red-600 text-zinc-300 transition"
-                                    >
-                                      <X className="w-3 h-3" />
-                                    </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    onClick={() => setAssetPickerSlideIdx(idx)}
-                                    className="no-export flex flex-col items-center justify-center text-zinc-500 hover:text-blue-400 gap-1 text-[10px] w-full h-full transition"
-                                  >
-                                    <ImageIcon className="w-4 h-4" />
-                                    <span>Bild / Grafik wählen</span>
-                                  </button>
-                                )}
-                              </div>
-                              <div className="space-y-1">
+                            {/* 1. COVER */}
+                            {currentLayout === "cover" && (
+                              <div className={`text-center px-1 ${isStory ? "space-y-4" : "space-y-2"}`}>
+                                <div
+                                  className="inline-block px-2 py-0.5 rounded-full text-[9px] font-semibold tracking-widest uppercase border font-sans"
+                                  style={{ borderColor: `${theme.accent}40`, color: theme.accent, backgroundColor: `${theme.accent}15` }}
+                                >
+                                  {authorName}
+                                </div>
                                 <textarea
-                                  rows={1}
+                                  rows={2}
                                   value={slide.headline}
                                   onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                  placeholder="Feature Kernaussage..."
-                                  className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
+                                  className={`w-full bg-transparent font-extrabold leading-tight text-center focus:outline-none rounded p-0.5 resize-none overflow-hidden ${
+                                    isStory ? "text-xl" : isSquare ? "text-sm sm:text-base" : "text-base"
+                                  }`}
                                   style={{ color: theme.text }}
                                 />
                                 <textarea
                                   rows={2}
                                   value={slide.content}
                                   onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                  placeholder="Erklärung..."
-                                  className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                  className={`w-full bg-transparent leading-relaxed text-center focus:outline-none rounded p-0.5 resize-none overflow-hidden ${
+                                    isStory ? "text-xs" : "text-[11px]"
+                                  }`}
                                   style={{ color: theme.subtext }}
                                 />
                               </div>
-                            </div>
-                          )}
+                            )}
 
-                          {/* 4. BIG STAT */}
-                          {currentLayout === "bigstat" && (
-                            <div className="text-center px-1 space-y-1 my-auto">
-                              <input
-                                type="text"
-                                value={slide.statNumber || "+340%"}
-                                onChange={(e) => updateSlideField(idx, "statNumber", e.target.value)}
-                                placeholder="+10x / 85%"
-                                className="w-full bg-transparent font-black tracking-tight text-center text-3xl sm:text-4xl focus:outline-none font-mono py-1"
-                                style={{ color: theme.accent }}
-                              />
-                              <textarea
-                                rows={2}
-                                value={slide.headline}
-                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                placeholder="Was bedeutet diese Kennzahl?"
-                                className="w-full bg-transparent font-bold text-xs text-center leading-snug focus:outline-none resize-none overflow-hidden"
-                                style={{ color: theme.text }}
-                              />
-                              <textarea
-                                rows={2}
-                                value={slide.content}
-                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                placeholder="Kontext oder Hebel..."
-                                className="w-full bg-transparent text-[10px] text-center leading-relaxed focus:outline-none resize-none overflow-hidden"
-                                style={{ color: theme.subtext }}
-                              />
-                            </div>
-                          )}
-
-                          {/* 5. STEP-BY-STEP (Zahl 100% sichtbar) */}
-                          {currentLayout === "step" && (
-                            <div className="relative space-y-1.5 my-auto">
-                              <div
-                                className="absolute right-2 top-0 text-4xl font-black font-mono opacity-20 select-none pointer-events-none"
-                                style={{ color: theme.accent }}
-                              >
-                                {String(slide.slideNumber).padStart(2, "0")}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  value={slide.stepBadge || `SCHRITT ${slide.slideNumber}`}
-                                  onChange={(e) => updateSlideField(idx, "stepBadge", e.target.value)}
-                                  className="px-2 py-0.5 rounded font-mono text-[9px] font-bold tracking-wider uppercase focus:outline-none bg-transparent border"
-                                  style={{ borderColor: `${theme.accent}40`, color: theme.accent }}
+                            {/* 2. HERO COVER */}
+                            {currentLayout === "hero" && (
+                              <div className={`text-center px-1 relative ${isStory ? "space-y-4" : "space-y-2"}`}>
+                                {!slide.imageUrl && (
+                                  <button
+                                    onClick={() => setAssetPickerSlideIdx(idx)}
+                                    className="no-export mx-auto mb-1 px-2.5 py-1 rounded-xl border border-dashed border-zinc-700 hover:border-blue-500 text-zinc-400 hover:text-blue-400 flex items-center justify-center gap-1.5 text-[10px] transition"
+                                  >
+                                    <ImageIcon className="w-3 h-3" />
+                                    <span>Hintergrundbild wählen</span>
+                                  </button>
+                                )}
+                                <textarea
+                                  rows={2}
+                                  value={slide.headline}
+                                  onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                  placeholder="Hook-Headline..."
+                                  className={`w-full bg-transparent font-black leading-tight text-center focus:outline-none rounded p-0.5 resize-none overflow-hidden ${
+                                    isStory ? "text-xl" : isSquare ? "text-sm sm:text-base" : "text-base"
+                                  }`}
+                                  style={{ color: theme.text }}
                                 />
-                              </div>
-                              <textarea
-                                rows={2}
-                                value={slide.headline}
-                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                placeholder="Schritt-Aktion..."
-                                className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none resize-none overflow-hidden pr-8"
-                                style={{ color: theme.text }}
-                              />
-                              <div
-                                className="p-2 rounded-xl border border-dashed"
-                                style={{ borderColor: `${theme.accent}30`, backgroundColor: `${theme.accent}08` }}
-                              >
                                 <textarea
                                   rows={2}
                                   value={slide.content}
                                   onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                  placeholder="Anleitung und Ausführung..."
-                                  className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                  placeholder="Einstiegssatz..."
+                                  className="w-full bg-transparent text-[11px] text-center leading-relaxed focus:outline-none rounded p-0.5 resize-none overflow-hidden"
                                   style={{ color: theme.subtext }}
                                 />
                               </div>
-                            </div>
-                          )}
+                            )}
 
-                          {/* 6. BULLETS */}
-                          {currentLayout === "bullets" && (
-                            <div className="space-y-1.5">
-                              <textarea
-                                rows={2}
-                                value={slide.headline}
-                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
-                                style={{ color: theme.text }}
-                              />
-                              <div
-                                className="p-2 rounded-xl border border-dashed"
-                                style={{ borderColor: `${theme.accent}40`, backgroundColor: `${theme.accent}08` }}
-                              >
+                            {/* 3. SPLITSCREEN */}
+                            {currentLayout === "splitscreen" && (
+                              <div className="flex flex-col justify-between gap-2 py-0.5">
+                                <div
+                                  className={`relative w-full rounded-xl overflow-hidden border border-zinc-700/50 bg-zinc-950/50 flex items-center justify-center shrink-0 ${
+                                    isStory ? "h-36" : isSquare ? "h-20" : "h-28"
+                                  }`}
+                                >
+                                  {slide.imageUrl ? (
+                                    <>
+                                      <img src={slide.imageUrl} alt="Split Asset" className="w-full h-full object-cover" />
+                                      <button
+                                        onClick={() => removeSlideImage(idx)}
+                                        className="no-export absolute top-1.5 right-1.5 p-1 rounded-full bg-zinc-950/90 hover:bg-red-600 text-zinc-300 hover:text-white transition shadow-lg border border-zinc-700/60 z-20"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      onClick={() => setAssetPickerSlideIdx(idx)}
+                                      className="no-export flex flex-col items-center justify-center text-zinc-500 hover:text-blue-400 gap-1 text-[10px] w-full h-full transition"
+                                    >
+                                      <ImageIcon className="w-4 h-4" />
+                                      <span>Bild / Grafik wählen</span>
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="space-y-0.5">
+                                  <textarea
+                                    rows={1}
+                                    value={slide.headline}
+                                    onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                    placeholder="Feature Kernaussage..."
+                                    className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
+                                    style={{ color: theme.text }}
+                                  />
+                                  <textarea
+                                    rows={2}
+                                    value={slide.content}
+                                    onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                    placeholder="Erklärung..."
+                                    className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                    style={{ color: theme.subtext }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 4. BIG STAT */}
+                            {currentLayout === "bigstat" && (
+                              <div className="text-center px-1 space-y-1 my-auto">
+                                <input
+                                  type="text"
+                                  value={slide.statNumber || "+340%"}
+                                  onChange={(e) => updateSlideField(idx, "statNumber", e.target.value)}
+                                  placeholder="+10x / 85%"
+                                  className={`w-full bg-transparent font-black tracking-tight text-center focus:outline-none font-mono py-0.5 ${
+                                    isSquare ? "text-2xl sm:text-3xl" : "text-3xl sm:text-4xl"
+                                  }`}
+                                  style={{ color: theme.accent }}
+                                />
+                                <textarea
+                                  rows={2}
+                                  value={slide.headline}
+                                  onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                  placeholder="Was bedeutet diese Kennzahl?"
+                                  className="w-full bg-transparent font-bold text-xs text-center leading-snug focus:outline-none resize-none overflow-hidden"
+                                  style={{ color: theme.text }}
+                                />
+                                <textarea
+                                  rows={2}
+                                  value={slide.content}
+                                  onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                  placeholder="Kontext oder Hebel..."
+                                  className="w-full bg-transparent text-[10px] text-center leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                  style={{ color: theme.subtext }}
+                                />
+                              </div>
+                            )}
+
+                            {/* 5. STEP */}
+                            {currentLayout === "step" && (
+                              <div className="relative space-y-1.5 my-auto">
+                                <div
+                                  className="absolute right-2 top-0 text-4xl font-black font-mono opacity-20 select-none pointer-events-none"
+                                  style={{ color: theme.accent }}
+                                >
+                                  {String(slide.slideNumber).padStart(2, "0")}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={slide.stepBadge || `SCHRITT ${slide.slideNumber}`}
+                                    onChange={(e) => updateSlideField(idx, "stepBadge", e.target.value)}
+                                    className="px-2 py-0.5 rounded font-mono text-[9px] font-bold tracking-wider uppercase focus:outline-none bg-transparent border"
+                                    style={{ borderColor: `${theme.accent}40`, color: theme.accent }}
+                                  />
+                                </div>
+                                <textarea
+                                  rows={2}
+                                  value={slide.headline}
+                                  onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                  placeholder="Schritt-Aktion..."
+                                  className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none resize-none overflow-hidden pr-8"
+                                  style={{ color: theme.text }}
+                                />
+                                <div
+                                  className="p-2 rounded-xl border border-dashed"
+                                  style={{ borderColor: `${theme.accent}30`, backgroundColor: `${theme.accent}08` }}
+                                >
+                                  <textarea
+                                    rows={2}
+                                    value={slide.content}
+                                    onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                    placeholder="Anleitung und Ausführung..."
+                                    className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                    style={{ color: theme.subtext }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 6. BULLETS */}
+                            {currentLayout === "bullets" && (
+                              <div className="space-y-1.5">
+                                <textarea
+                                  rows={2}
+                                  value={slide.headline}
+                                  onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                  className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
+                                  style={{ color: theme.text }}
+                                />
+                                <div
+                                  className="p-2 rounded-xl border border-dashed"
+                                  style={{ borderColor: `${theme.accent}40`, backgroundColor: `${theme.accent}08` }}
+                                >
+                                  <textarea
+                                    rows={3}
+                                    value={slide.content}
+                                    onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                    className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                    style={{ color: theme.text }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 7. QUOTE */}
+                            {currentLayout === "quote" && (
+                              <div className="relative space-y-1.5 my-auto">
+                                <Quote className="w-5 h-5 opacity-30 select-none shrink-0" style={{ color: theme.accent }} />
+                                <textarea
+                                  rows={2}
+                                  value={slide.headline}
+                                  onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                  placeholder="„Kernaussage oder Zitat...“"
+                                  className="w-full bg-transparent italic font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
+                                  style={{ color: theme.text }}
+                                />
+                                <textarea
+                                  rows={2}
+                                  value={slide.content}
+                                  onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                  placeholder="— Autor / Quelle"
+                                  className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                  style={{ color: theme.accent }}
+                                />
+                              </div>
+                            )}
+
+                            {/* 8. CTA */}
+                            {currentLayout === "cta" && (
+                              <div className="text-center px-1 space-y-1.5">
+                                <Megaphone className="mx-auto w-4 h-4 opacity-80" style={{ color: theme.accent }} />
+                                <textarea
+                                  rows={2}
+                                  value={slide.headline}
+                                  onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                  className="w-full bg-transparent font-bold text-xs text-center leading-snug focus:outline-none resize-none overflow-hidden"
+                                  style={{ color: theme.text }}
+                                />
+                                <textarea
+                                  rows={2}
+                                  value={slide.content}
+                                  onChange={(e) => updateSlideField(idx, "content", e.target.value)}
+                                  className="w-full bg-transparent text-[10px] text-center leading-relaxed focus:outline-none resize-none overflow-hidden"
+                                  style={{ color: theme.subtext }}
+                                />
+                              </div>
+                            )}
+
+                            {/* 9. STATEMENT */}
+                            {currentLayout === "statement" && (
+                              <div className="space-y-1.5">
+                                <textarea
+                                  rows={2}
+                                  value={slide.headline}
+                                  onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
+                                  className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
+                                  style={{ color: theme.text }}
+                                />
                                 <textarea
                                   rows={3}
                                   value={slide.content}
                                   onChange={(e) => updateSlideField(idx, "content", e.target.value)}
                                   className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
-                                  style={{ color: theme.text }}
+                                  style={{ color: theme.subtext }}
                                 />
                               </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
 
-                          {/* 7. QUOTE (Icon 100% sichtbar) */}
-                          {currentLayout === "quote" && (
-                            <div className="relative space-y-1.5 my-auto">
-                              <Quote className="w-5 h-5 opacity-30 select-none shrink-0" style={{ color: theme.accent }} />
-                              <textarea
-                                rows={2}
-                                value={slide.headline}
-                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                placeholder="„Kernaussage oder Zitat...“"
-                                className="w-full bg-transparent italic font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
-                                style={{ color: theme.text }}
-                              />
-                              <textarea
-                                rows={2}
-                                value={slide.content}
-                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                placeholder="— Autor / Quelle"
-                                className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
-                                style={{ color: theme.accent }}
-                              />
-                            </div>
-                          )}
-
-                          {/* 8. CTA */}
-                          {currentLayout === "cta" && (
-                            <div className="text-center px-1 space-y-1.5">
-                              <Megaphone className="mx-auto w-4 h-4 opacity-80" style={{ color: theme.accent }} />
-                              <textarea
-                                rows={2}
-                                value={slide.headline}
-                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                className="w-full bg-transparent font-bold text-xs text-center leading-snug focus:outline-none resize-none overflow-hidden"
-                                style={{ color: theme.text }}
-                              />
-                              <textarea
-                                rows={2}
-                                value={slide.content}
-                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                className="w-full bg-transparent text-[10px] text-center leading-relaxed focus:outline-none resize-none overflow-hidden"
-                                style={{ color: theme.subtext }}
-                              />
-                            </div>
-                          )}
-
-                          {/* 9. STATEMENT */}
-                          {currentLayout === "statement" && (
-                            <div className="space-y-1.5">
-                              <textarea
-                                rows={2}
-                                value={slide.headline}
-                                onChange={(e) => updateSlideField(idx, "headline", e.target.value)}
-                                className="w-full bg-transparent font-bold text-xs leading-snug focus:outline-none rounded p-0.5 resize-none overflow-hidden"
-                                style={{ color: theme.text }}
-                              />
-                              <textarea
-                                rows={3}
-                                value={slide.content}
-                                onChange={(e) => updateSlideField(idx, "content", e.target.value)}
-                                className="w-full bg-transparent text-[10px] leading-relaxed focus:outline-none resize-none overflow-hidden"
-                                style={{ color: theme.subtext }}
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Slide Footer */}
-                        <div
-                          className="relative z-10 pt-2 border-t border-zinc-800/40 flex items-center justify-between text-[9px] font-sans shrink-0"
-                          style={{ color: theme.subtext }}
-                        >
-                          <span className="truncate max-w-[120px] font-medium">
-                            {authorName} <span className="opacity-60">{authorHandle}</span>
-                          </span>
-                          <span className="font-mono">Swipe ➔</span>
+                          <div
+                            className="relative z-10 pt-2 border-t border-zinc-800/40 flex items-center justify-between text-[9px] font-sans shrink-0 w-full mt-auto"
+                            style={{ color: theme.subtext }}
+                          >
+                            <span className="truncate max-w-[120px] font-medium">
+                              {authorName} <span className="opacity-60">{authorHandle}</span>
+                            </span>
+                            <span className="font-mono shrink-0">
+                              {isStory ? "Tap ➔" : "Swipe ➔"}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Post Copy */}
                 {postCopy && (
                   <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 space-y-2.5">
                     <div className="flex justify-between items-center">
